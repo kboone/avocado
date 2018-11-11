@@ -74,35 +74,6 @@ def find_time_to_fractions(fluxes, fractions, forward=True):
     return result
 
 
-def lgb_multi_weighted_logloss(y_true, y_preds):
-    """
-    @author olivier https://www.kaggle.com/ogrellier
-    multi logloss for PLAsTiCC challenge
-    """
-    # Class 99 isn't present in training.
-    use_classes = classes[:-1]
-    y_p = y_preds.reshape(y_true.shape[0], len(use_classes), order='F')
-
-    # Trasform y_true in dummies
-    y_ohe = pd.get_dummies(y_true)
-    # Normalize rows and limit y_preds to 1e-15, 1-1e-15
-    y_p = np.clip(a=y_p, a_min=1e-15, a_max=1 - 1e-15)
-    # Transform to log
-    y_p_log = np.log(y_p)
-    # Get the log for ones, .values is used to drop the index of DataFrames
-    # Exclude class 99 for now, since there is no class99 in the training set
-    # we gave a special process for that class
-    y_log_ones = np.sum(y_ohe.values * y_p_log, axis=0)
-    # Get the number of positives for each class
-    nb_pos = y_ohe.sum(axis=0).values.astype(float)
-    # Weight average and divide by the number of positives
-    class_arr = np.array([class_weights[i] for i in use_classes])
-    y_w = y_log_ones * class_arr / nb_pos
-
-    loss = - np.sum(y_w) / np.sum(class_arr)
-    return 'wloss', loss, False
-
-
 def multi_weighted_logloss(y_true, y_preds):
     """
     @author olivier https://www.kaggle.com/ogrellier
@@ -113,16 +84,15 @@ def multi_weighted_logloss(y_true, y_preds):
         use_classes = classes[:-1]
     else:
         use_classes = classes
+
     y_p = y_preds
+
     # Trasform y_true in dummies
     y_ohe = pd.get_dummies(y_true)
     # Normalize rows and limit y_preds to 1e-15, 1-1e-15
     y_p = np.clip(a=y_p, a_min=1e-15, a_max=1 - 1e-15)
     # Transform to log
     y_p_log = np.log(y_p)
-    # Get the log for ones, .values is used to drop the index of DataFrames
-    # Exclude class 99 for now, since there is no class99 in the training set
-    # we gave a special process for that class
     y_log_ones = np.sum(y_ohe.values * y_p_log, axis=0)
     # Get the number of positives for each class
     nb_pos = y_ohe.sum(axis=0).values.astype(float)
@@ -131,71 +101,15 @@ def multi_weighted_logloss(y_true, y_preds):
     y_w = y_log_ones * class_arr / nb_pos
 
     loss = - np.sum(y_w) / np.sum(class_arr)
+
     return loss
 
 
-def train_classifiers(full_train=None, y=None):
-    folds = StratifiedKFold(n_splits=5, shuffle=True, random_state=1)
-    clfs = []
-    importances = pd.DataFrame()
-    lgb_params = {
-        'boosting_type': 'gbdt',
-        'objective': 'multiclass',
-        'num_class': 14,
-        'metric': 'multi_logloss',
-        'learning_rate': 0.03,
-        'subsample': .9,
-        'colsample_bytree': .7,
-        'reg_alpha': .01,
-        'reg_lambda': .01,
-        'min_split_gain': 0.01,
-        'min_child_weight': 10,
-        'n_estimators': 1000,
-        'silent': -1,
-        'verbose': -1,
-        'max_depth': 3
-    }
-
-    # Compute training weights.
-    w = y.value_counts()
-    weights = {i: class_weights[i] * np.sum(w) / w[i] for i in w.index}
-
-    oof_preds = np.zeros((len(full_train), np.unique(y).shape[0]))
-    for fold_, (trn_, val_) in enumerate(folds.split(y, y)):
-        trn_x, trn_y = full_train.iloc[trn_], y.iloc[trn_]
-        val_x, val_y = full_train.iloc[val_], y.iloc[val_]
-
-        clf = lgb.LGBMClassifier(**lgb_params)
-        clf.fit(
-            trn_x, trn_y,
-            eval_set=[(trn_x, trn_y), (val_x, val_y)],
-            eval_metric=lgb_multi_weighted_logloss,
-            verbose=100,
-            early_stopping_rounds=50,
-            sample_weight=trn_y.map(weights)
-        )
-        oof_preds[val_, :] = clf.predict_proba(
-            val_x, num_iteration=clf.best_iteration_
-        )
-        print(multi_weighted_logloss(val_y, clf.predict_proba(
-            val_x, num_iteration=clf.best_iteration_)))
-
-        imp_df = pd.DataFrame()
-        imp_df['feature'] = full_train.columns
-        imp_df['gain'] = clf.feature_importances_
-        imp_df['fold'] = fold_ + 1
-        importances = pd.concat([importances, imp_df], axis=0, sort=False)
-
-        clfs.append(clf)
-
-    print('MULTI WEIGHTED LOG LOSS : %.5f ' %
-          multi_weighted_logloss(y_true=y, y_preds=oof_preds))
-
-    # Build a pandas dataframe with the out of fold predictions
-    df = pd.DataFrame(data=oof_preds,
-                      columns=['class_%d' % i for i in classes[:-1]])
-
-    return clfs, importances, df
+def lgb_multi_weighted_logloss(y_true, y_preds):
+    """Wrapper around multi_weighted_logloss that works with lgbm"""
+    y_p = y_preds.reshape(y_true.shape[0], len(classes) - 1, order='F')
+    loss = multi_weighted_logloss(y_true, y_p)
+    return 'wloss', loss, False
 
 
 def do_predictions(object_ids, features, classifiers):
@@ -283,7 +197,11 @@ class Dataset(object):
         """
         features_path = '%s/features_v%d_%s.h5' % (
             features_dir, self._features_version, self.dataset_name)
-        self.features = pd.read_hdf(features_path)
+        self.raw_features = pd.read_hdf(features_path)
+
+        # Drop keys that we don't want to use in the prediction
+        drop_keys = ['object_id', 'hostgal_specz']
+        self.features = self.raw_features.drop(drop_keys, 1)
 
     def get_gp_data(self, idx, target=None, verbose=False):
         if target is not None:
@@ -563,3 +481,79 @@ class Dataset(object):
                 pickle.dump([feature_labels, all_features], outfile)
 
         return feature_labels, all_features
+
+    def train_classifiers(self):
+        """Based off of olivier's kernel"""
+        features = self.features
+        y = self.meta_data['target']
+
+        folds = StratifiedKFold(n_splits=5, shuffle=True, random_state=1)
+        classifiers = []
+        importances = pd.DataFrame()
+        lgb_params = {
+            'boosting_type': 'gbdt',
+            'objective': 'multiclass',
+            'num_class': 14,
+            'metric': 'multi_logloss',
+            'learning_rate': 0.03,
+            'subsample': .9,
+            'colsample_bytree': .7,
+            'reg_alpha': .01,
+            'reg_lambda': .01,
+            'min_split_gain': 0.01,
+            'min_child_weight': 10,
+            'n_estimators': 1000,
+            'silent': -1,
+            'verbose': -1,
+            'max_depth': 3
+        }
+
+        # Compute training weights.
+        w = y.value_counts()
+        norm_class_weights = {i: class_weights[i] * np.sum(w) / w[i] for i in
+                              w.index}
+
+        oof_preds = np.zeros((len(features), np.unique(y).shape[0]))
+        for fold_, (trn_, val_) in enumerate(folds.split(y, y)):
+            trn_x, trn_y = features.iloc[trn_], y.iloc[trn_]
+            val_x, val_y = features.iloc[val_], y.iloc[val_]
+            trn_weights = trn_y.map(norm_class_weights)
+            val_weights = val_y.map(norm_class_weights)
+
+            classifier = lgb.LGBMClassifier(**lgb_params)
+            classifier.fit(
+                trn_x, trn_y,
+                eval_set=[(trn_x, trn_y), (val_x, val_y)],
+                eval_metric=lgb_multi_weighted_logloss,
+                verbose=100,
+                early_stopping_rounds=50,
+                sample_weight=trn_weights,
+                eval_sample_weight=[trn_weights, val_weights],
+            )
+            val_preds = classifier.predict_proba(
+                val_x, num_iteration=classifier.best_iteration_)
+
+            oof_preds[val_, :] = val_preds
+
+            imp_df = pd.DataFrame()
+            imp_df['feature'] = features.columns
+            imp_df['gain'] = classifier.feature_importances_
+            imp_df['fold'] = fold_ + 1
+            importances = pd.concat([importances, imp_df], axis=0, sort=False)
+
+            classifiers.append(classifier)
+
+        print('MULTI WEIGHTED LOG LOSS : %.5f ' %
+              multi_weighted_logloss(y_true=y, y_preds=oof_preds))
+
+        # Build a pandas dataframe with the out of fold predictions
+        oof_preds_df = pd.DataFrame(data=oof_preds,
+                                    columns=['class_%d' % i for i in
+                                             classes[:-1]])
+
+        # Save results of the fit internally, and return the fitted
+        # classifiers.
+        self.importances = importances
+        self.fit_preds = oof_preds_df
+
+        return classifiers
