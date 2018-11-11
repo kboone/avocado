@@ -1,13 +1,15 @@
-import numpy as np
-import pandas as pd
-import matplotlib.pyplot as plt
-import tqdm
-
+from collections import OrderedDict
 import george
 from george import kernels
-from george.modeling import Model
-from collections import OrderedDict
+import lightgbm as lgb
+import matplotlib.pyplot as plt
+import numpy as np
+import os
+import pandas as pd
+import pickle
 from scipy.optimize import minimize
+from sklearn.model_selection import StratifiedKFold
+import tqdm
 
 
 # Parameters of the dataset
@@ -15,6 +17,18 @@ num_passbands = 6
 pad = 100
 start_mjd = 59580 - pad
 end_mjd = 60675 + pad
+
+# Define class labels, galactic vs extragalactic label and weights
+classes = [6, 15, 16, 42, 52, 53, 62, 64, 65, 67, 88, 90, 92, 95, 99]
+class_weights = {6: 1, 15: 2, 16: 1, 42: 1, 52: 1, 53: 1, 62: 1, 64: 2, 65: 1,
+                 67: 1, 88: 1, 90: 1, 92: 1, 95: 1, 99: 2}
+class_galactic = {6: True, 15: False, 16: True, 42: False, 52: False, 53: True,
+                  62: False, 64: False, 65: True, 67: False, 88: False, 90:
+                  False, 92: True, 95: False}
+
+# Paths
+basedir = '/home/scpdata06/kboone/plasticc'
+features_dir = '%s/features' % basedir
 
 
 def find_time_to_fractions(fluxes, fractions, forward=True):
@@ -60,21 +74,216 @@ def find_time_to_fractions(fluxes, fractions, forward=True):
     return result
 
 
+def lgb_multi_weighted_logloss(y_true, y_preds):
+    """
+    @author olivier https://www.kaggle.com/ogrellier
+    multi logloss for PLAsTiCC challenge
+    """
+    # Class 99 isn't present in training.
+    use_classes = classes[:-1]
+    y_p = y_preds.reshape(y_true.shape[0], len(use_classes), order='F')
+
+    # Trasform y_true in dummies
+    y_ohe = pd.get_dummies(y_true)
+    # Normalize rows and limit y_preds to 1e-15, 1-1e-15
+    y_p = np.clip(a=y_p, a_min=1e-15, a_max=1 - 1e-15)
+    # Transform to log
+    y_p_log = np.log(y_p)
+    # Get the log for ones, .values is used to drop the index of DataFrames
+    # Exclude class 99 for now, since there is no class99 in the training set
+    # we gave a special process for that class
+    y_log_ones = np.sum(y_ohe.values * y_p_log, axis=0)
+    # Get the number of positives for each class
+    nb_pos = y_ohe.sum(axis=0).values.astype(float)
+    # Weight average and divide by the number of positives
+    class_arr = np.array([class_weights[i] for i in use_classes])
+    y_w = y_log_ones * class_arr / nb_pos
+
+    loss = - np.sum(y_w) / np.sum(class_arr)
+    return 'wloss', loss, False
+
+
+def multi_weighted_logloss(y_true, y_preds):
+    """
+    @author olivier https://www.kaggle.com/ogrellier
+    multi logloss for PLAsTiCC challenge
+    """
+    if y_preds.shape[1] != len(classes):
+        # No prediction for 99, pretend that it doesn't exist.
+        use_classes = classes[:-1]
+    else:
+        use_classes = classes
+    y_p = y_preds
+    # Trasform y_true in dummies
+    y_ohe = pd.get_dummies(y_true)
+    # Normalize rows and limit y_preds to 1e-15, 1-1e-15
+    y_p = np.clip(a=y_p, a_min=1e-15, a_max=1 - 1e-15)
+    # Transform to log
+    y_p_log = np.log(y_p)
+    # Get the log for ones, .values is used to drop the index of DataFrames
+    # Exclude class 99 for now, since there is no class99 in the training set
+    # we gave a special process for that class
+    y_log_ones = np.sum(y_ohe.values * y_p_log, axis=0)
+    # Get the number of positives for each class
+    nb_pos = y_ohe.sum(axis=0).values.astype(float)
+    # Weight average and divide by the number of positives
+    class_arr = np.array([class_weights[i] for i in use_classes])
+    y_w = y_log_ones * class_arr / nb_pos
+
+    loss = - np.sum(y_w) / np.sum(class_arr)
+    return loss
+
+
+def train_classifiers(full_train=None, y=None):
+    folds = StratifiedKFold(n_splits=5, shuffle=True, random_state=1)
+    clfs = []
+    importances = pd.DataFrame()
+    lgb_params = {
+        'boosting_type': 'gbdt',
+        'objective': 'multiclass',
+        'num_class': 14,
+        'metric': 'multi_logloss',
+        'learning_rate': 0.03,
+        'subsample': .9,
+        'colsample_bytree': .7,
+        'reg_alpha': .01,
+        'reg_lambda': .01,
+        'min_split_gain': 0.01,
+        'min_child_weight': 10,
+        'n_estimators': 1000,
+        'silent': -1,
+        'verbose': -1,
+        'max_depth': 3
+    }
+
+    # Compute training weights.
+    w = y.value_counts()
+    weights = {i: class_weights[i] * np.sum(w) / w[i] for i in w.index}
+
+    oof_preds = np.zeros((len(full_train), np.unique(y).shape[0]))
+    for fold_, (trn_, val_) in enumerate(folds.split(y, y)):
+        trn_x, trn_y = full_train.iloc[trn_], y.iloc[trn_]
+        val_x, val_y = full_train.iloc[val_], y.iloc[val_]
+
+        clf = lgb.LGBMClassifier(**lgb_params)
+        clf.fit(
+            trn_x, trn_y,
+            eval_set=[(trn_x, trn_y), (val_x, val_y)],
+            eval_metric=lgb_multi_weighted_logloss,
+            verbose=100,
+            early_stopping_rounds=50,
+            sample_weight=trn_y.map(weights)
+        )
+        oof_preds[val_, :] = clf.predict_proba(
+            val_x, num_iteration=clf.best_iteration_
+        )
+        print(multi_weighted_logloss(val_y, clf.predict_proba(
+            val_x, num_iteration=clf.best_iteration_)))
+
+        imp_df = pd.DataFrame()
+        imp_df['feature'] = full_train.columns
+        imp_df['gain'] = clf.feature_importances_
+        imp_df['fold'] = fold_ + 1
+        importances = pd.concat([importances, imp_df], axis=0, sort=False)
+
+        clfs.append(clf)
+
+    print('MULTI WEIGHTED LOG LOSS : %.5f ' %
+          multi_weighted_logloss(y_true=y, y_preds=oof_preds))
+
+    # Build a pandas dataframe with the out of fold predictions
+    df = pd.DataFrame(data=oof_preds,
+                      columns=['class_%d' % i for i in classes[:-1]])
+
+    return clfs, importances, df
+
+
+def do_predictions(object_ids, features, classifiers):
+    pred = 0
+    for classifier in classifiers:
+        pred += classifier.predict_proba(features) / len(classifiers)
+
+    # Add in flat prediction for class 99. This prediction depends on whether
+    # the object is galactic or extragalactic.
+    gal_frac_99 = 0.04
+
+    # Weights without 99 included.
+    weight_gal = sum([class_weights[class_id] for class_id, is_gal in
+                      class_galactic.items() if is_gal])
+    weight_extgal = sum([class_weights[class_id] for class_id, is_gal in
+                         class_galactic.items() if not is_gal])
+
+    guess_99_gal = gal_frac_99 * class_weights[99] / weight_gal
+    guess_99_extgal = (1 - gal_frac_99) * class_weights[99] / weight_extgal
+
+    is_gals = features['hostgal_photoz'] == 0.
+
+    pred_99 = np.array([guess_99_gal if is_gal else guess_99_extgal for is_gal
+                        in is_gals])
+
+    stack_pred = np.hstack([pred, pred_99[:, None]])
+
+    # Normalize
+    stack_pred = stack_pred / np.sum(stack_pred, axis=1)[:, None]
+
+    # Build a pandas dataframe with the result
+    df = pd.DataFrame(index=object_ids, data=stack_pred,
+                      columns=['class_%d' % i for i in classes])
+
+    return df
+
+
 class Dataset(object):
+    def __init__(self):
+        """Class to represent part of the PLAsTiCC dataset.
+
+        This class can load either the training or validation data, can produce
+        features and then can create outputs. The features can also be loaded
+        from a file to avoid having to recalculate them every time. Not
+        everything has to be loaded at once, but some functions might not work
+        if that is the case. I haven't put in the effort to make everything
+        safe with regards to random calls, so if something breaks you probably
+        just need to load the data that it needs.
+        """
+        self.flux_data = None
+        self.meta_data = None
+        self.features = None
+        self.dataset_name = None
+
+        # Update this whenever the feature calculation code is updated.
+        self._features_version = 1
+
     def load_training_data(self):
         """Load the training dataset."""
         self.flux_data = pd.read_csv('../data/training_set.csv')
         self.meta_data = pd.read_csv('../data/training_set_metadata.csv')
 
-    def load_chunk(self, chunk_idx):
+        self.dataset_name = 'train'
+
+    def load_chunk(self, chunk_idx, load_flux_data=True):
         """Load a chunk from the test dataset.
 
         I previously split up the dataset into smaller files that can be read
         into memory.
+
+        By default, the flux data is loaded which takes a long time. That can
+        be turned off if desired.
         """
-        path = '../data_split/plasticc_split_%04d.h5' % chunk_idx
-        self.flux_data = pd.read_hdf(path, 'df')
-        self.meta_data = pd.read_hdf(path, 'df')
+        path = ("/home/scpdata06/kboone/plasticc/data_split/"
+                "plasticc_split_%04d.h5" % chunk_idx)
+        if load_flux_data:
+            self.flux_data = pd.read_hdf(path, 'df')
+        self.meta_data = pd.read_hdf(path, 'meta')
+
+        self.dataset_name = 'test_%04d' % chunk_idx
+
+    def load_features(self):
+        """Load the features for a dataset. This assumes that the features have
+        already been created.
+        """
+        features_path = '%s/features_v%d_%s.h5' % (
+            features_dir, self._features_version, self.dataset_name)
+        self.features = pd.read_hdf(features_path)
 
     def get_gp_data(self, idx, target=None, verbose=False):
         if target is not None:
@@ -255,6 +464,10 @@ class Dataset(object):
         pred = gp_data['pred']
         meta = gp_data['meta']
 
+        # Add the object id. This shouldn't be used for training a model, but
+        # is necessary to identify which row is which when we split things up.
+        features['object_id'] = meta['object_id']
+
         # Features from the meta data
         features['hostgal_specz'] = meta['hostgal_specz']
         features['hostgal_photoz'] = meta['hostgal_photoz']
@@ -334,6 +547,19 @@ class Dataset(object):
             count = np.sum((diff_times > start) & (diff_times < end))
             features['count_max_%s' % label] = count
 
-        # Count 
-
         return list(features.keys()), np.array(list(features.values()))
+
+    def extract_all_features(self, version=1):
+        filename = './train_features_v%d.pkl' % version
+        if os.path.exists(filename):
+            feature_labels, all_features = pickle.load(open(filename, 'rb'))
+        else:
+            all_features = []
+            for i in tqdm.tqdm(range(len(self.meta_data))):
+                feature_labels, features = self.extract_features(i)
+                all_features.append(features)
+            all_features = np.array(all_features)
+            with open(filename, 'wb') as outfile:
+                pickle.dump([feature_labels, all_features], outfile)
+
+        return feature_labels, all_features
