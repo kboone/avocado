@@ -112,7 +112,7 @@ def lgb_multi_weighted_logloss(y_true, y_preds):
     return 'wloss', loss, False
 
 
-def do_predictions(object_ids, features, classifiers):
+def do_predictions_flatprob(object_ids, features, classifiers):
     pred = 0
     for classifier in classifiers:
         pred += classifier.predict_proba(features) / len(classifiers)
@@ -142,6 +142,32 @@ def do_predictions(object_ids, features, classifiers):
 
     # Build a pandas dataframe with the result
     df = pd.DataFrame(index=object_ids, data=stack_pred,
+                      columns=['class_%d' % i for i in classes])
+
+    return df
+
+
+def do_predictions(object_ids, features, classifiers):
+    base_class_99_scores = 1.5 * np.ones((len(features), 1))
+    pred = 0
+    for classifier in classifiers:
+        # Get base scores
+        raw_scores = classifier.predict_proba(features, raw_score=True)
+        max_scores = np.max(raw_scores, axis=1)[:, None]
+        class_99_scores = np.clip(base_class_99_scores, None,
+                                  max_scores)
+        # class_99_scores = base_class_99_scores
+
+        # Add in class 99 scores.
+        scores = np.hstack([raw_scores, class_99_scores])
+
+        # Turn the scores into a prediction
+        iter_pred = np.exp(scores) / np.sum(np.exp(scores), axis=1)[:, None]
+
+        pred += iter_pred / len(classifiers)
+
+    # Build a pandas dataframe with the result
+    df = pd.DataFrame(index=object_ids, data=pred,
                       columns=['class_%d' % i for i in classes])
 
     return df
