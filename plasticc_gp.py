@@ -7,6 +7,7 @@ import numpy as np
 import os
 import pandas as pd
 import pickle
+from astropy.cosmology import FlatLambdaCDM
 from scipy.optimize import minimize
 from sklearn.model_selection import StratifiedKFold
 import tqdm
@@ -29,6 +30,9 @@ class_galactic = {6: True, 15: False, 16: True, 42: False, 52: False, 53: True,
 # Paths
 basedir = '/home/scpdata06/kboone/plasticc'
 features_dir = '%s/features' % basedir
+
+# Cosmology used in sims
+cosmo = FlatLambdaCDM(H0=70, Om0=0.3, Tcmb0=2.725)
 
 
 def find_time_to_fractions(fluxes, fractions, forward=True):
@@ -148,7 +152,7 @@ def do_predictions_flatprob(object_ids, features, classifiers):
 
 
 def do_predictions(object_ids, features, classifiers):
-    base_class_99_scores = 1.5 * np.ones((len(features), 1))
+    base_class_99_scores = 0.7 * np.ones((len(features), 1))
     pred = 0
     for classifier in classifiers:
         # Get base scores
@@ -217,32 +221,43 @@ class Dataset(object):
 
         self.dataset_name = 'test_%04d' % chunk_idx
 
-    def load_features(self):
-        """Load the features for a dataset. This assumes that the features have
-        already been created.
-        """
+    def load_augment(self, num_augments, base_name='train'):
+        """Load an augmented dataset."""
+        dataset_name = '%s_augment_%d' % (base_name, num_augments)
+        path = '%s/augment/%s.h5' % (basedir, dataset_name)
+
+        self.flux_data = pd.read_hdf(path, 'df')
+        self.meta_data = pd.read_hdf(path, 'meta')
+
+        self.dataset_name = dataset_name
+
+    @property
+    def features_path(self):
+        """Path to the features file for this dataset"""
         features_path = '%s/features_v%d_%s.h5' % (
             features_dir, self._features_version, self.dataset_name)
-        self.raw_features = pd.read_hdf(features_path)
+        return features_path
+
+    def load_features(self):
+        """Load the features for a dataset and postprocess them.
+
+        This assumes that the features have already been created.
+        """
+        self.raw_features = pd.read_hdf(self.features_path)
 
         # Drop keys that we don't want to use in the prediction
-        drop_keys = ['object_id', 'hostgal_specz']
+        drop_keys = [
+            'object_id',
+            'hostgal_specz',
+            'ra',
+            'decl',
+            'gal_l',
+            'gal_b',
+            # 'mwebv',
+        ]
         self.features = self.raw_features.drop(drop_keys, 1)
 
-    def get_gp_data(self, idx, target=None, verbose=False):
-        if target is not None:
-            target_data = self.meta_data[self.meta_data['target'] == target]
-            object_meta = target_data.iloc[idx]
-        else:
-            object_meta = self.meta_data.iloc[idx]
-
-        if verbose:
-            print(object_meta)
-
-        object_id = object_meta['object_id']
-
-        object_data = self.flux_data[self.flux_data['object_id'] == object_id]
-
+    def _get_gp_data(self, object_meta, object_data):
         times = []
         fluxes = []
         bands = []
@@ -280,8 +295,29 @@ class Dataset(object):
 
         return gp_data
 
-    def fit_gp(self, idx, target=None, verbose=False):
-        gp_data = self.get_gp_data(idx, target, verbose)
+    def get_gp_data(self, idx, target=None, verbose=False):
+        if target is not None:
+            target_data = self.meta_data[self.meta_data['target'] == target]
+            object_meta = target_data.iloc[idx]
+        else:
+            object_meta = self.meta_data.iloc[idx]
+
+        if verbose:
+            print(object_meta)
+
+        object_id = object_meta['object_id']
+        object_data = self.flux_data[self.flux_data['object_id'] == object_id]
+
+        return self._get_gp_data(object_meta, object_data)
+
+    def fit_gp(self, idx=None, target=None, object_meta=None, object_data=None,
+               verbose=False):
+        if idx is not None:
+            # idx was specified, pull from the internal data
+            gp_data = self.get_gp_data(idx, target, verbose)
+        else:
+            # The meta data and flux data can also be directly specified.
+            gp_data = self._get_gp_data(object_meta, object_data)
 
         # GP kernel. We use a 2-dimensional Matern kernel to model the
         # transient. The kernel amplitude is fixed to a fraction of the maximum
@@ -359,8 +395,9 @@ class Dataset(object):
 
         return gp_data
 
-    def plot_gp(self, idx, target=None, verbose=False):
-        result = self.fit_gp(idx, target, verbose)
+    def plot_gp(self, idx=None, target=None, object_meta=None,
+                object_data=None, verbose=False):
+        result = self.fit_gp(idx, target, object_meta, object_data, verbose)
 
         plt.figure()
 
@@ -380,7 +417,7 @@ class Dataset(object):
         This requires the ipywidgets package to be set up, and has only been
         tested in jupyter-lab.
         """
-        from ipywidgets import interact, IntSlider, Dropdown
+        from ipywidgets import interact, IntSlider, Dropdown, fixed
 
         targets = np.unique(self.meta_data['target'])
 
@@ -393,14 +430,15 @@ class Dataset(object):
             target_widget.observe(update_idx_range, 'value')
         update_idx_range()
 
-        interact(self.plot_gp, target=target_widget, idx=idx_widget)
+        interact(self.plot_gp, idx=idx_widget, target=target_widget,
+                 object_meta=fixed(None), object_data=fixed(None))
 
-    def extract_features(self, idx, target=None):
+    def extract_features(self, *args, **kwargs):
         """Extract features from a target"""
         features = OrderedDict()
 
         # Fit the GP and produce an output model
-        gp_data = self.fit_gp(idx, target)
+        gp_data = self.fit_gp(*args, **kwargs)
         times = gp_data['times']
         fluxes = gp_data['fluxes']
         flux_errs = gp_data['flux_errs']
@@ -493,27 +531,253 @@ class Dataset(object):
 
         return list(features.keys()), np.array(list(features.values()))
 
-    def extract_all_features(self, version=1):
-        filename = './train_features_v%d.pkl' % version
-        if os.path.exists(filename):
-            feature_labels, all_features = pickle.load(open(filename, 'rb'))
-        else:
-            all_features = []
-            for i in tqdm.tqdm(range(len(self.meta_data))):
-                feature_labels, features = self.extract_features(i)
-                all_features.append(features)
-            all_features = np.array(all_features)
-            with open(filename, 'wb') as outfile:
-                pickle.dump([feature_labels, all_features], outfile)
+    def extract_all_features(self):
+        """Extract all features and save them to an HDF file.
+        """
+        all_features = []
+        for i in tqdm.tqdm(range(len(self.meta_data))):
+            feature_labels, features = self.extract_features(i)
+            all_features.append(features)
 
-        return feature_labels, all_features
+        feature_table = pd.DataFrame(all_features, columns=feature_labels)
+        feature_table.to_hdf(self.features_path, 'features', mode='w')
+
+        # load_features does some postprocessing. Return the output of that
+        # rather than the table that we saved directly.
+        return self.load_features()
+
+    def augment_object(self, idx=None, object_meta=None, object_data=None):
+        """Generate an augmented version of an object for training
+
+        The following forms of data augmentation are applied:
+        - drop random observations.
+        - drop large blocks of observations.
+        - For galactic observations, adjust brightness (=distance).
+        - For extragalactic observations, adjust redshift.
+        - add noise
+        """
+        if idx is not None:
+            orig_object_meta = self.meta_data.iloc[idx]
+            orig_object_data = self.flux_data[self.flux_data['object_id'] ==
+                                              orig_object_meta['object_id']]
+        else:
+            orig_object_meta = object_meta
+            orig_object_data = object_data
+
+        object_data = orig_object_data.copy()
+        object_meta = orig_object_meta.copy()
+
+        # Drop a block of observations corresponding to the typical width of a
+        # season
+        block_start = np.random.uniform(start_mjd, end_mjd)
+        block_end = block_start + 250
+        block_mask = ((object_data['mjd'] < block_start) |
+                      (object_data['mjd'] > block_end))
+        object_data = object_data[block_mask]
+
+        # Drop random observations to get things that look like the non DDF
+        # observations that most of our objects are actually in. I estimate the
+        # distribution of number of observations in the non DDF regions with
+        # a mixture of 3 gaussian distributions.
+        num_orig = len(object_data)
+        gauss_choice = np.random.choice(3, p=[0.05, 0.4, 0.55])
+        if gauss_choice == 0:
+            mu = 95
+            sigma = 20
+        elif gauss_choice == 1:
+            mu = 115
+            sigma = 8
+        elif gauss_choice == 2:
+            mu = 138
+            sigma = 8
+        num_obs = int(np.clip(np.random.normal(mu, sigma), 50, None))
+
+        if num_obs > 0.9 * num_orig:
+            # Not enough original data points for the choice, drop 10% of
+            # observations randomly.
+            num_drop = int(0.1 * num_orig)
+        else:
+            num_drop = num_orig - num_obs
+
+        drop_indices = np.random.choice(
+            object_data.index, num_drop, replace=False
+        )
+        object_data = object_data.drop(drop_indices)
+
+        if object_meta['hostgal_photoz'] == 0.:
+            # Adjust brightness for galactic objects. Moving them by a normal
+            # distribution with a width of 0.5 mags seems to be reasonable.
+            adjust_mag = np.random.normal(0, 0.5)
+            adjust_scale = 10**(-0.4*adjust_mag)
+            object_data['flux'] *= adjust_scale
+            object_data['flux_err'] *= adjust_scale
+        else:
+            # Adjust redshift for extragalactic objects. The redshift
+            # distribution is ~normal in log-space with a standard deviation of
+            # ~0.2 log10(z). There is a systematic offset of 0.2 log10(z)
+            # between the objects that have a spec-z and the ones that don't.
+            # To generate a more representative training dataset, add in this
+            # offset to the test objects along with some additional dispersion.
+            adjust_logz = np.random.normal(0.2, 0.2)
+            orig_z = object_meta['hostgal_specz']
+            new_z = orig_z * 10**adjust_logz
+
+            # Adjust distance modulus
+            delta_distmod = (cosmo.distmod(orig_z) -
+                             cosmo.distmod(new_z)).value
+            adjust_scale = 10**(0.4*delta_distmod)
+            object_data['flux'] *= adjust_scale
+            object_data['flux_err'] *= adjust_scale
+
+            # Adjust times to account for time dilation.
+            ref_mjd = (
+                (start_mjd + end_mjd) / 2. + np.random.uniform(-100, 100)
+            )
+            new_mjd = (
+                ref_mjd +
+                (object_data['mjd'] - ref_mjd) * (1 + new_z) / (1 + orig_z)
+            )
+            object_data['mjd'] = new_mjd
+
+            # Get a new photo-z estimate. I estimate the error on the photoz
+            # estimate with a Gaussian mixture model that was approximated from
+            # the real data. There is a narrow core with broader wings along
+            # with a weird group that clumps at z=2.5 regardless of the true
+            # redshift.
+            new_photoz = -1
+            while new_photoz < 0:
+                gauss_choice = np.random.choice(4, p=[0.73, 0.14, 0.1, 0.03])
+                if gauss_choice == 0:
+                    # Good photoz
+                    photoz_std = (np.random.normal(0.009, 0.001) +
+                                  np.random.gamma(1.2, 0.01))
+                    photoz_err = np.random.normal(0, photoz_std)
+                elif gauss_choice == 1:
+                    # photoz is okish, but error is garbage
+                    photoz_std = np.random.gamma(2., 0.2)
+                    photoz_err = np.random.normal(0, 0.05)
+                elif gauss_choice == 2:
+                    # photoz is offset by ~0.2.
+                    photoz_std = np.random.gamma(2., 0.2)
+                    photoz_err = 0.2 + np.random.normal(0, 0.1)
+                elif gauss_choice == 3:
+                    # garbage photoz. For some reason this just outputs a
+                    # number around 2.5
+                    photoz_std = np.random.uniform(0.1, 1.5)
+                    photoz_err = np.random.normal(2.5, 0.2)
+
+                if gauss_choice != 3:
+                    new_photoz = new_z + photoz_err
+                else:
+                    # Catastrophic failure, just get z=2.5 regardless of the
+                    # true redshift.
+                    new_photoz = photoz_err
+
+            object_meta['hostgal_specz'] = new_z
+            object_meta['hostgal_photoz'] = new_photoz
+            object_meta['hostgal_photoz_err'] = photoz_std
+            object_meta['distmod'] = cosmo.distmod(new_photoz).value
+
+        # Add noise to match what we see in the real data. Each band has a
+        # different noise level. I use the same value for everywhere, so don't
+        # use any features directly related to the noise or you could end up
+        # just finding the training data.
+        band_noises = {
+            0: 10,
+            1: 2.5,
+            2: 3.6,
+            3: 6.1,
+            4: 13.1,
+            5: 29,
+        }
+        add_stds = np.array([band_noises[i] for i in object_data['passband']])
+        noise_add = np.random.normal(loc=0.0, scale=add_stds)
+        object_data['flux'] += noise_add
+        object_data['flux_err'] = np.sqrt(object_data['flux_err']**2 +
+                                          add_stds**2)
+
+        # Smear the mwebv value a bit so that it doesn't uniquely identify
+        # points. I leave the position on the sky unchanged (ra, dec, etc.).
+        # Don't put any of those variables directly into the classifier!
+        object_meta['mwebv'] *= np.random.normal(1, 0.1)
+
+        # The 'detected' threshold appears to be something like 5 sigma across
+        # all bands that night. I don't really want to figure it out, and I
+        # don't use it anyway, so just ignore it.
+        object_data['detected'] = 0
+
+        # Update the object id by adding a random fractional offset to the id.
+        # This lets us match it to the original but uniquely identify it.
+        new_object_id = object_meta['object_id'] + np.random.uniform(0, 1)
+        object_data['object_id'] = new_object_id
+        object_meta['object_id'] = new_object_id
+
+        return object_meta, object_data
+
+    def augment_dataset(self, num_augments=1):
+        """Augment the dataset for training.
+
+        We need to do k-folding before augmenting or we'll bias the
+        cross-validation.
+        """
+        all_aug_meta = []
+        all_aug_data = []
+
+        for idx in tqdm.tqdm(range(len(self.meta_data))):
+            # Keep the real training data
+            object_meta = self.meta_data.iloc[idx]
+            object_data = self.flux_data[self.flux_data['object_id'] ==
+                                         object_meta['object_id']]
+            all_aug_meta.append(object_meta)
+            all_aug_data.append(object_data)
+
+            # Generate variants on the training data that are more
+            # representative of the test data
+            for aug_idx in range(num_augments - 1):
+                aug_meta, aug_data = self.augment_object(
+                    object_meta=object_meta, object_data=object_data
+                )
+                all_aug_meta.append(aug_meta)
+                all_aug_data.append(aug_data)
+
+        all_aug_meta = pd.DataFrame(all_aug_meta)
+        all_aug_data = pd.concat(all_aug_data)
+
+        # Predefine the folds so that we keep the different augmentations of
+        # the same object in the same folds. We add this to the metadata under
+        # the key "fold"
+        y = self.meta_data['target']
+        folds = StratifiedKFold(n_splits=5, shuffle=True, random_state=1)
+        aug_kfold_masks = []
+        for fold_train, fold_val in folds.split(y, y):
+            val_mask = np.zeros(len(y), dtype=bool)
+            val_mask[fold_val] = True
+            aug_kfold_mask = np.repeat(val_mask, num_augments)
+            aug_kfold_masks.append(aug_kfold_mask)
+        aug_kfold_masks = np.array(aug_kfold_masks)
+        aug_kfold_indices = np.argmax(aug_kfold_masks, axis=0)
+        all_aug_meta['fold'] = aug_kfold_indices
+
+        new_dataset = Dataset()
+
+        new_dataset.flux_data = all_aug_data
+        new_dataset.meta_data = all_aug_meta
+        new_dataset.dataset_name = '%s_augment_%d' % (self.dataset_name,
+                                                      num_augments)
+
+        # Save the results of the augmentation
+        output_path = '%s/augment/%s.h5' % (basedir, new_dataset.dataset_name)
+        new_dataset.meta_data.to_hdf(output_path, key='meta', mode='w')
+        new_dataset.flux_data.to_hdf(output_path, key='df')
+
+        return new_dataset
 
     def train_classifiers(self):
         """Based off of olivier's kernel"""
         features = self.features
         y = self.meta_data['target']
 
-        folds = StratifiedKFold(n_splits=5, shuffle=True, random_state=1)
+        # folds = StratifiedKFold(n_splits=5, shuffle=True, random_state=1)
         classifiers = []
         importances = pd.DataFrame()
         lgb_params = {
@@ -540,9 +804,12 @@ class Dataset(object):
                               w.index}
 
         oof_preds = np.zeros((len(features), np.unique(y).shape[0]))
-        for fold_, (trn_, val_) in enumerate(folds.split(y, y)):
-            trn_x, trn_y = features.iloc[trn_], y.iloc[trn_]
-            val_x, val_y = features.iloc[val_], y.iloc[val_]
+        # for fold_, (trn_, val_) in enumerate(folds.split(y, y)):
+        for fold_ in range(5):
+            trn_ = self.meta_data['fold'].values != fold_
+            val_ = self.meta_data['fold'].values == fold_
+            trn_x, trn_y = features.loc[trn_], y.loc[trn_]
+            val_x, val_y = features.loc[val_], y.loc[val_]
             trn_weights = trn_y.map(norm_class_weights)
             val_weights = val_y.map(norm_class_weights)
 
