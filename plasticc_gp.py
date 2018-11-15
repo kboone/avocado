@@ -269,6 +269,10 @@ class Dataset(object):
         # bursts in the image, even if they are quite wide.
         for passband in range(num_passbands):
             band_data = object_data[object_data['passband'] == passband]
+            if len(band_data) == 0:
+                # No observations in this band
+                continue
+
             ref_flux = np.percentile(band_data['flux'], 20)
 
             for idx, row in band_data.iterrows():
@@ -792,7 +796,7 @@ class Dataset(object):
             'reg_lambda': .01,
             'min_split_gain': 0.01,
             'min_child_weight': 10,
-            'n_estimators': 1000,
+            'n_estimators': 5000,
             'silent': -1,
             'verbose': -1,
             'max_depth': 3
