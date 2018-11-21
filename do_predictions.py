@@ -8,6 +8,7 @@ d = plasticc_gp.Dataset()
 # d.load_training_data()
 # d.load_features()
 d.load_augment(20)
+# d.load_augment(10)
 d.load_features()
 
 classifiers = d.train_classifiers()
@@ -27,4 +28,4 @@ for chunk_id in tqdm.tqdm(range(num_feature_files)):
     all_pred.append(pred)
 
 pred_df = pd.concat(all_pred)
-pred_df.to_csv('./pred_aug_2.csv')
+pred_df.to_csv('./pred_aug_single_20_3.csv')
