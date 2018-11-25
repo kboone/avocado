@@ -151,8 +151,14 @@ def do_predictions_flatprob(object_ids, features, classifiers):
     return df
 
 
-def do_predictions(object_ids, features, classifiers):
-    base_class_99_scores = 0.7 * np.ones((len(features), 1))
+def do_predictions(object_ids, features, classifiers, gal_outlier_score=0.25,
+                   extgal_outlier_score=1.4):
+    print("OLD!!! DON'T USE!")
+    is_gal = features['hostgal_photoz'] == 0.
+    base_class_99_scores = np.zeros((len(features), 1))
+    base_class_99_scores[is_gal] = gal_outlier_score
+    base_class_99_scores[~is_gal] = extgal_outlier_score
+
     pred = 0
     for classifier in classifiers:
         # Get base scores
@@ -160,7 +166,6 @@ def do_predictions(object_ids, features, classifiers):
         max_scores = np.max(raw_scores, axis=1)[:, None]
         class_99_scores = np.clip(base_class_99_scores, None,
                                   max_scores)
-        # class_99_scores = base_class_99_scores
 
         # Add in class 99 scores.
         scores = np.hstack([raw_scores, class_99_scores])
@@ -177,6 +182,47 @@ def do_predictions(object_ids, features, classifiers):
     return df
 
 
+def do_scores(object_ids, features, classifiers):
+    scores = []
+    for classifier in classifiers:
+        scores.append(classifier.predict_proba(features,
+                                               raw_score=True))
+    scores = np.array(scores)
+
+    return scores
+
+
+def convert_scores(meta, scores, gal_outlier_score=0.4,
+                   extgal_outlier_score=1.4):
+    is_gal = meta['hostgal_photoz'] == 0.
+    base_class_99_scores = np.zeros((len(meta), 1))
+    base_class_99_scores[is_gal] = gal_outlier_score
+    base_class_99_scores[~is_gal] = extgal_outlier_score
+
+    pred = 0
+    for iter_scores in scores:
+        # Iterate over each classifier's scores if there were more than one.
+        # Get base scores
+        # max_scores = np.max(iter_scores, axis=1)[:, None]
+        max_scores = np.percentile(iter_scores, 100 * 12.5/13, axis=1)[:, None]
+        class_99_scores = np.clip(base_class_99_scores, None, max_scores)
+
+        # Add in class 99 scores.
+        iter_full_scores = np.hstack([iter_scores, class_99_scores])
+
+        # Turn the scores into a prediction
+        iter_pred = np.exp(iter_full_scores) / np.sum(np.exp(iter_full_scores),
+                                                      axis=1)[:, None]
+
+        pred += iter_pred / len(scores)
+
+    # Build a pandas dataframe with the result
+    df = pd.DataFrame(index=meta['object_id'], data=pred,
+                      columns=['class_%d' % i for i in classes])
+
+    return df
+
+
 def fit_classifier(train_x, train_y, train_weights, eval_x=None, eval_y=None,
                    eval_weights=None, **kwargs):
     lgb_params = {
@@ -184,17 +230,18 @@ def fit_classifier(train_x, train_y, train_weights, eval_x=None, eval_y=None,
         'objective': 'multiclass',
         'num_class': 14,
         'metric': 'multi_logloss',
-        'learning_rate': 0.03,
-        'subsample': .9,
-        'colsample_bytree': .7,
+        'learning_rate': 0.05,
+        'subsample': .75,
+        'colsample_bytree': .5,
         'reg_alpha': .01,
-        'reg_lambda': .01,
-        'min_split_gain': 0.01,
-        'min_child_weight': 10,
+        'reg_lambda': .00023,
+        'min_split_gain': 0.1,
+        'min_child_weight': 100.,
         'n_estimators': 5000,
         'silent': -1,
         'verbose': -1,
-        'max_depth': 3
+        'max_depth': 7,
+        'num_leaves': 7,
     }
 
     lgb_params.update(kwargs)
@@ -207,7 +254,7 @@ def fit_classifier(train_x, train_y, train_weights, eval_x=None, eval_y=None,
     if eval_x is not None:
         fit_params['eval_set'] = [(eval_x, eval_y)]
         fit_params['eval_metric'] = lgb_multi_weighted_logloss
-        # fit_params['early_stopping_rounds'] = 50
+        fit_params['early_stopping_rounds'] = 50
         fit_params['eval_sample_weight'] = [eval_weights]
 
     classifier = lgb.LGBMClassifier(**lgb_params)
@@ -306,13 +353,18 @@ class Dataset(object):
         # 20th percentile of all observations in each channel as a new
         # zeropoint. This has good performance when there are supernova-like
         # bursts in the image, even if they are quite wide.
+        # UPDATE: when picking the 20th percentile, observations with just
+        # noise get really messed up. Revert back to the median for now and see
+        # if that helps. It doesn't really matter if supernovae go slightly
+        # negative...
         for passband in range(num_passbands):
             band_data = object_data[object_data['passband'] == passband]
             if len(band_data) == 0:
                 # No observations in this band
                 continue
 
-            ref_flux = np.percentile(band_data['flux'], 20)
+            # ref_flux = np.percentile(band_data['flux'], 20)
+            ref_flux = np.median(band_data['flux'])
 
             for idx, row in band_data.iterrows():
                 times.append(row['mjd'] - start_mjd)
@@ -325,7 +377,10 @@ class Dataset(object):
         fluxes = np.array(fluxes)
         flux_errs = np.array(flux_errs)
 
-        scale = np.max(np.abs(fluxes))
+        # Guess the scale based off of the highest signal-to-noise point.
+        # Sometimes the edge bands are pure noise and can have large
+        # insignificant points.
+        scale = fluxes[np.argmax(fluxes / flux_errs)]
 
         gp_data = {
             'meta': object_meta,
@@ -354,7 +409,7 @@ class Dataset(object):
         return self._get_gp_data(object_meta, object_data)
 
     def fit_gp(self, idx=None, target=None, object_meta=None, object_data=None,
-               verbose=False):
+               verbose=False, guess_length_scale=20.):
         if idx is not None:
             # idx was specified, pull from the internal data
             gp_data = self.get_gp_data(idx, target, verbose)
@@ -368,7 +423,8 @@ class Dataset(object):
         # is also fixed. We fit for the kernel width in the time direction as
         # different transients evolve on very different time scales.
         kernel = ((0.2*gp_data['scale'])**2 *
-                  kernels.Matern32Kernel([20.**2, 5**2], ndim=2))
+                  kernels.Matern32Kernel([guess_length_scale**2, 5**2],
+                                         ndim=2))
 
         # print(kernel.get_parameter_names())
         kernel.freeze_parameter('k1:log_constant')
@@ -402,6 +458,7 @@ class Dataset(object):
             # bounds=[(-30, 30), (0, 10), (0, 5)],
             # bounds=[(0, 10), (0, 5)],
             bounds=[(0, np.log(1000**2))],
+            # bounds=[(-30, 30), (0, np.log(1000**2))],
             # options={'ftol': 1e-5}
         )
 
@@ -870,7 +927,7 @@ class Dataset(object):
             # Train a single classifier.
             train_weights = y.map(norm_class_weights)
             classifier = fit_classifier(features, y, train_weights,
-                                        n_estimators=2000)
+                                        n_estimators=2500)
 
             importances = pd.DataFrame()
             importances['feature'] = features.columns
