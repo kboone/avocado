@@ -10,6 +10,8 @@ import pickle
 from astropy.cosmology import FlatLambdaCDM
 from scipy.optimize import minimize
 from sklearn.model_selection import StratifiedKFold
+from scipy.signal import find_peaks
+from scipy.special import erf
 import tqdm
 
 
@@ -216,6 +218,44 @@ def convert_scores(meta, scores, gal_outlier_score=0.4,
 
         pred += iter_pred / len(scores)
 
+    print("Mean gal 99: %.5f" % np.mean(pred[is_gal, -1]))
+    print("Mean ext 99: %.5f" % np.mean(pred[~is_gal, -1]))
+
+    # Build a pandas dataframe with the result
+    df = pd.DataFrame(index=meta['object_id'], data=pred,
+                      columns=['class_%d' % i for i in classes])
+
+    return df
+
+
+def convert_scores_2(meta, scores, s2n, gal_outlier_score=-2.,
+                     extgal_outlier_score=-0.8):
+    is_gal = meta['hostgal_photoz'] == 0.
+    base_class_99_scores = np.zeros((len(meta), 1))
+    base_class_99_scores[is_gal] = gal_outlier_score
+    base_class_99_scores[~is_gal] = extgal_outlier_score
+    base_class_99_scores[:, 0] += 1.5*np.log10(s2n)
+
+    pred = 0
+    for iter_scores in scores:
+        # Iterate over each classifier's scores if there were more than one.
+        # Get base scores
+        # max_scores = np.max(iter_scores, axis=1)[:, None]
+        max_scores = np.percentile(iter_scores, 100 * 12.5/13, axis=1)[:, None]
+        class_99_scores = np.clip(base_class_99_scores, None, max_scores)
+
+        # Add in class 99 scores.
+        iter_full_scores = np.hstack([iter_scores, class_99_scores])
+
+        # Turn the scores into a prediction
+        iter_pred = np.exp(iter_full_scores) / np.sum(np.exp(iter_full_scores),
+                                                      axis=1)[:, None]
+
+        pred += iter_pred / len(scores)
+
+    print("Mean gal 99: %.5f" % np.mean(pred[is_gal, -1]))
+    print("Mean ext 99: %.5f" % np.mean(pred[~is_gal, -1]))
+
     # Build a pandas dataframe with the result
     df = pd.DataFrame(index=meta['object_id'], data=pred,
                       columns=['class_%d' % i for i in classes])
@@ -231,17 +271,18 @@ def fit_classifier(train_x, train_y, train_weights, eval_x=None, eval_y=None,
         'num_class': 14,
         'metric': 'multi_logloss',
         'learning_rate': 0.05,
-        'subsample': .75,
+        # 'bagging_fraction': .75,
+        # 'bagging_freq': 5,
         'colsample_bytree': .5,
-        'reg_alpha': .01,
-        'reg_lambda': .00023,
-        'min_split_gain': 0.1,
-        'min_child_weight': 100.,
+        'reg_alpha': 0.,
+        'reg_lambda': 0.,
+        'min_split_gain': 10.,
+        'min_child_weight': 2000.,
         'n_estimators': 5000,
         'silent': -1,
         'verbose': -1,
         'max_depth': 7,
-        'num_leaves': 7,
+        'num_leaves': 50,
     }
 
     lgb_params.update(kwargs)
@@ -281,14 +322,31 @@ class Dataset(object):
         self.dataset_name = None
 
         # Update this whenever the feature calculation code is updated.
-        self._features_version = 1
+        self._features_version = 2
+
+        # Update this whenever the augmentation code is updated.
+        self._augment_version = 3
 
     def load_training_data(self):
         """Load the training dataset."""
         self.flux_data = pd.read_csv('../data/training_set.csv')
         self.meta_data = pd.read_csv('../data/training_set_metadata.csv')
 
+        # Label folds
+        y = self.meta_data['target']
+        folds = StratifiedKFold(n_splits=5, shuffle=True, random_state=1)
+        kfold_indices = -1*np.ones(len(y))
+        for idx, (fold_train, fold_val) in enumerate(folds.split(y, y)):
+            kfold_indices[fold_val] = idx
+        self.meta_data['fold'] = kfold_indices
+
         self.dataset_name = 'train'
+
+    def load_test_data(self):
+        """Load the test metadata."""
+        self.meta_data = pd.read_csv('../data/test_set_metadata.csv')
+
+        self.dataset_name = 'test'
 
     def load_chunk(self, chunk_idx, load_flux_data=True):
         """Load a chunk from the test dataset.
@@ -309,8 +367,11 @@ class Dataset(object):
 
     def load_augment(self, num_augments, base_name='train'):
         """Load an augmented dataset."""
-        dataset_name = '%s_augment_%d' % (base_name, num_augments)
+        dataset_name = '%s_augment_v%d_%d' % (
+            base_name, self._augment_version, num_augments
+        )
         path = '%s/augment/%s.h5' % (basedir, dataset_name)
+        print(path)
 
         self.flux_data = pd.read_hdf(path, 'df')
         self.meta_data = pd.read_hdf(path, 'meta')
@@ -335,15 +396,29 @@ class Dataset(object):
         drop_keys = [
             'object_id',
             'hostgal_specz',
+            # 'hostgal_photoz',
+            # 'distmod',
             'ra',
             'decl',
             'gal_l',
             'gal_b',
-            # 'mwebv',
+            'mwebv',
+            'ddf',
+            'max_time',
+            # 'hostgal_photoz',
         ]
-        self.features = self.raw_features.drop(drop_keys, 1)
 
-    def _get_gp_data(self, object_meta, object_data):
+        features = self.raw_features
+        for key in drop_keys:
+            try:
+                features = features.drop(key, 1)
+            except KeyError:
+                # Key doesn't exist in this version. Ignore it.
+                pass
+
+        self.features = features
+
+    def _get_gp_data(self, object_meta, object_data, subtract_median=True):
         times = []
         fluxes = []
         bands = []
@@ -368,7 +443,10 @@ class Dataset(object):
 
             for idx, row in band_data.iterrows():
                 times.append(row['mjd'] - start_mjd)
-                fluxes.append(row['flux'] - ref_flux)
+                flux = row['flux']
+                if subtract_median:
+                    flux = flux - ref_flux
+                fluxes.append(flux)
                 bands.append(passband)
                 flux_errs.append(row['flux_err'])
 
@@ -393,7 +471,8 @@ class Dataset(object):
 
         return gp_data
 
-    def get_gp_data(self, idx, target=None, verbose=False):
+    def get_gp_data(self, idx, target=None, verbose=False,
+                    subtract_median=True):
         if target is not None:
             target_data = self.meta_data[self.meta_data['target'] == target]
             object_meta = target_data.iloc[idx]
@@ -409,7 +488,7 @@ class Dataset(object):
         return self._get_gp_data(object_meta, object_data)
 
     def fit_gp(self, idx=None, target=None, object_meta=None, object_data=None,
-               verbose=False, guess_length_scale=20.):
+               verbose=False, guess_length_scale=20., fix_scale=False):
         if idx is not None:
             # idx was specified, pull from the internal data
             gp_data = self.get_gp_data(idx, target, verbose)
@@ -427,7 +506,8 @@ class Dataset(object):
                                          ndim=2))
 
         # print(kernel.get_parameter_names())
-        kernel.freeze_parameter('k1:log_constant')
+        if fix_scale:
+            kernel.freeze_parameter('k1:log_constant')
         kernel.freeze_parameter('k2:metric:log_M_1_1')
 
         gp = george.GP(kernel)
@@ -451,15 +531,19 @@ class Dataset(object):
 
         # print(np.exp(gp.get_parameter_vector()))
 
+        bounds = [(0, np.log(1000**2))]
+        if not fix_scale:
+            bounds = [(-30, 30)] + bounds
+
         fit_result = minimize(
             neg_ln_like,
             gp.get_parameter_vector(),
             jac=grad_neg_ln_like,
             # bounds=[(-30, 30), (0, 10), (0, 5)],
             # bounds=[(0, 10), (0, 5)],
-            bounds=[(0, np.log(1000**2))],
+            bounds=bounds,
             # bounds=[(-30, 30), (0, np.log(1000**2))],
-            # options={'ftol': 1e-5}
+            # options={'ftol': 1e-4}
         )
 
         if not fit_result.success:
@@ -495,9 +579,8 @@ class Dataset(object):
 
         return gp_data
 
-    def plot_gp(self, idx=None, target=None, object_meta=None,
-                object_data=None, verbose=False):
-        result = self.fit_gp(idx, target, object_meta, object_data, verbose)
+    def plot_gp(self, *args, **kwargs):
+        result = self.fit_gp(*args, **kwargs)
 
         plt.figure()
 
@@ -542,6 +625,7 @@ class Dataset(object):
         times = gp_data['times']
         fluxes = gp_data['fluxes']
         flux_errs = gp_data['flux_errs']
+        bands = gp_data['bands']
         s2ns = fluxes / flux_errs
         pred = gp_data['pred']
         meta = gp_data['meta']
@@ -562,6 +646,9 @@ class Dataset(object):
         features['mwebv'] = meta['mwebv']
         features['ddf'] = meta['ddf']
 
+        # Count how many observations there are
+        features['count'] = len(fluxes)
+
         # Features from GP fit parameters
         for i, fit_parameter in enumerate(gp_data['fit_parameters']):
             features['gp_fit_%d' % i] = fit_parameter
@@ -570,10 +657,26 @@ class Dataset(object):
         max_times = np.argmax(pred, axis=1)
         med_max_time = np.median(max_times)
         max_dts = max_times - med_max_time
-        max_fluxes = [pred[band, time] for band, time in enumerate(max_times)]
+        max_fluxes = np.array([pred[band, time] for band, time in
+                               enumerate(max_times)])
+        features['max_time'] = med_max_time
         for band, (max_flux, max_dt) in enumerate(zip(max_fluxes, max_dts)):
             features['max_flux_%d' % band] = max_flux
             features['max_dt_%d' % band] = max_dt
+
+        # Minimum fluxes.
+        min_fluxes = np.min(pred, axis=1)
+        for band, min_flux in enumerate(min_fluxes):
+            features['min_flux_%d' % band] = min_flux
+
+        # Calculate the positive and negative integrals of the lightcurve,
+        # normalized to the respective peak fluxes. This gives a measure of the
+        # "width" of the lightcurve, even for non-bursty objects.
+        positive_widths = np.sum(np.clip(pred, 0, None), axis=1) / max_fluxes
+        negative_widths = np.sum(np.clip(pred, None, 0), axis=1) / min_fluxes
+        for band in range(num_passbands):
+            features['positive_width_%d' % band] = positive_widths[band]
+            features['negative_width_%d' % band] = negative_widths[band]
 
         # Find times to fractions of the peak amplitude
         fractions = [0.8, 0.5, 0.2]
@@ -590,7 +693,7 @@ class Dataset(object):
 
         # Count the number of data points with significant positive/negative
         # fluxes
-        thresholds = [-10, -5, -3, 3, 5, 10]
+        thresholds = [-20, -10, -5, -3, 3, 5, 10, 20]
         for threshold in thresholds:
             if threshold < 0:
                 count = np.sum(s2ns < threshold)
@@ -601,6 +704,14 @@ class Dataset(object):
         # Count the fraction of data points that are "background", i.e. less
         # than a 3 sigma detection of something.
         features['frac_background'] = np.sum(np.abs(s2ns) < 3) / len(s2ns)
+
+        # Sum up the total signal-to-noise in each band
+        for band in range(6):
+            mask = bands == band
+            band_fluxes = fluxes[mask]
+            band_flux_errs = flux_errs[mask]
+            total_band_s2n = np.sqrt(np.sum((band_fluxes / band_flux_errs)**2))
+            features['total_s2n_%d' % band] = total_band_s2n
 
         # Count the time delay between the first and last significant fluxes
         thresholds = [5, 10, 20]
@@ -619,15 +730,76 @@ class Dataset(object):
             (-5, 5, 'center'),
             (-20, -5, 'rise_20'),
             (-50, -20, 'rise_50'),
-            (-200, -50, 'rise_200'),
+            (-100, -50, 'rise_100'),
+            (-200, -100, 'rise_200'),
+            (-300, -200, 'rise_300'),
+            (-400, -300, 'rise_400'),
+            (-500, -400, 'rise_500'),
+            (-600, -500, 'rise_600'),
+            (-700, -600, 'rise_700'),
+            (-800, -700, 'rise_800'),
             (5, 20, 'fall_20'),
             (20, 50, 'fall_50'),
-            (50, 200, 'fall_200'),
+            (50, 100, 'fall_100'),
+            (100, 200, 'fall_200'),
+            (200, 300, 'fall_300'),
+            (300, 400, 'fall_400'),
+            (400, 500, 'fall_500'),
+            (500, 600, 'fall_600'),
+            (600, 700, 'fall_700'),
+            (700, 800, 'fall_800'),
         ]
         for start, end, label in time_bins:
             diff_times = times - med_max_time
-            count = np.sum((diff_times > start) & (diff_times < end))
+
+            mask = (diff_times > start) & (diff_times < end)
+
+            # Count how many observations there are in the time bin
+            count = np.sum(mask)
             features['count_max_%s' % label] = count
+
+            # Measure the GP flux level relative to the peak flux. We do this
+            # by taking the median flux in each band and comparing it to the
+            # peak flux.
+            bin_start = np.clip(int(med_max_time + start), 0, None)
+            bin_end = np.clip(int(med_max_time + end), 0, None)
+
+            if bin_start == bin_end:
+                scale_pred = np.nan
+                bin_mean_fluxes = np.nan
+                bin_std_fluxes = np.nan
+            else:
+                scale_pred = pred[:, bin_start:bin_end] / max_fluxes[:, None]
+                bin_mean_fluxes = np.mean(scale_pred)
+                bin_std_fluxes = np.std(scale_pred)
+            features['mean_%s' % label] = bin_mean_fluxes
+            features['std_%s' % label] = bin_std_fluxes
+
+        # Do peak detection on the GP output
+        for positive in (True, False):
+            for band in range(num_passbands):
+                if positive:
+                    band_flux = pred[band]
+                    base_name = 'peaks_pos_%d' % band
+                else:
+                    band_flux = -pred[band]
+                    base_name = 'peaks_neg_%d' % band
+                peaks, properties = find_peaks(
+                    band_flux,
+                    height=np.max(np.abs(band_flux) / 5.)
+                )
+                num_peaks = len(peaks)
+
+                features['%s_count' % base_name] = num_peaks
+
+                sort_heights = np.sort(properties['peak_heights'])[::-1]
+                # Measure the fractional height of the other peaks.
+                for i in range(1, 3):
+                    if num_peaks > i:
+                        rel_height = sort_heights[i] / sort_heights[0]
+                    else:
+                        rel_height = np.nan
+                    features['%s_frac_%d' % (base_name, (i+1))] = rel_height
 
         return list(features.keys()), np.array(list(features.values()))
 
@@ -739,6 +911,12 @@ class Dataset(object):
             )
             object_data['mjd'] = new_mjd
 
+            # Drop observations that are outside of the observing window.
+            # print(len(object_data))
+            # print(len(new_mjd))
+            object_data = object_data[(new_mjd > start_mjd + pad) &
+                                      (new_mjd < end_mjd - pad)].copy()
+
             # Get a new photo-z estimate. I estimate the error on the photoz
             # estimate with a Gaussian mixture model that was approximated from
             # the real data. There is a narrow core with broader wings along
@@ -801,16 +979,22 @@ class Dataset(object):
         # Don't put any of those variables directly into the classifier!
         object_meta['mwebv'] *= np.random.normal(1, 0.1)
 
-        # The 'detected' threshold appears to be something like 5 sigma across
-        # all bands that night. I don't really want to figure it out, and I
-        # don't use it anyway, so just ignore it.
-        object_data['detected'] = 0
+        # The 'detected' threshold doesn't seem to be a simple function of
+        # signal-to-noise. For now, I model it with an error function on the
+        # signal-to-noise, but there is probably a proper way to determine if
+        # there was a dectection or not...
+        s2n = np.abs(object_data['flux']) / object_data['flux_err']
+        prob_detected = (erf((s2n - 5.5) / 2) + 1) / 2.
+        object_data['detected'] = np.random.rand(len(s2n)) < prob_detected
 
         # Update the object id by adding a random fractional offset to the id.
         # This lets us match it to the original but uniquely identify it.
         new_object_id = object_meta['object_id'] + np.random.uniform(0, 1)
         object_data['object_id'] = new_object_id
         object_meta['object_id'] = new_object_id
+
+        # No longer in DDF if we have augmented the object.
+        object_meta['ddf'] = 0.
 
         return object_meta, object_data
 
@@ -834,41 +1018,37 @@ class Dataset(object):
             # Generate variants on the training data that are more
             # representative of the test data
             for aug_idx in range(num_augments - 1):
-                aug_meta, aug_data = self.augment_object(
-                    object_meta=object_meta, object_data=object_data
-                )
-                all_aug_meta.append(aug_meta)
-                all_aug_data.append(aug_data)
+                for attempt in range(5):
+                    aug_meta, aug_data = self.augment_object(
+                        object_meta=object_meta, object_data=object_data
+                    )
+                    if np.sum(aug_data['detected']) < 2:
+                        # Not detected
+                        continue
+
+                    # Detected. Save it and move on to the next one.
+                    all_aug_meta.append(aug_meta)
+                    all_aug_data.append(aug_data)
+                    break
 
         all_aug_meta = pd.DataFrame(all_aug_meta)
         all_aug_data = pd.concat(all_aug_data)
-
-        # Predefine the folds so that we keep the different augmentations of
-        # the same object in the same folds. We add this to the metadata under
-        # the key "fold"
-        y = self.meta_data['target']
-        folds = StratifiedKFold(n_splits=5, shuffle=True, random_state=1)
-        aug_kfold_masks = []
-        for fold_train, fold_val in folds.split(y, y):
-            val_mask = np.zeros(len(y), dtype=bool)
-            val_mask[fold_val] = True
-            aug_kfold_mask = np.repeat(val_mask, num_augments)
-            aug_kfold_masks.append(aug_kfold_mask)
-        aug_kfold_masks = np.array(aug_kfold_masks)
-        aug_kfold_indices = np.argmax(aug_kfold_masks, axis=0)
-        all_aug_meta['fold'] = aug_kfold_indices
 
         new_dataset = Dataset()
 
         new_dataset.flux_data = all_aug_data
         new_dataset.meta_data = all_aug_meta
-        new_dataset.dataset_name = '%s_augment_%d' % (self.dataset_name,
-                                                      num_augments)
+        new_dataset.dataset_name = '%s_augment_v%d_%d' % (
+            self.dataset_name, self._augment_version, num_augments)
 
         # Save the results of the augmentation
         output_path = '%s/augment/%s.h5' % (basedir, new_dataset.dataset_name)
-        new_dataset.meta_data.to_hdf(output_path, key='meta', mode='w')
-        new_dataset.flux_data.to_hdf(output_path, key='df')
+
+        try:
+            new_dataset.meta_data.to_hdf(output_path, key='meta', mode='w')
+            new_dataset.flux_data.to_hdf(output_path, key='df')
+        except:
+            print("Failed to save!")
 
         return new_dataset
 
@@ -915,8 +1095,15 @@ class Dataset(object):
 
                 classifiers.append(classifier)
 
+            # Full sample
             print('MULTI WEIGHTED LOG LOSS : %.5f ' %
                   multi_weighted_logloss(y_true=y, y_preds=oof_preds))
+
+            # Original sample only (no augments)
+            original_mask = (self.meta_data['object_id'] % 1) == 0
+            print('BASE WEIGHTED LOG LOSS: %.5f' %
+                  multi_weighted_logloss(y.values[original_mask],
+                                         oof_preds[original_mask]))
 
             # Build a pandas dataframe with the out of fold predictions
             oof_preds_df = pd.DataFrame(data=oof_preds,
@@ -927,7 +1114,7 @@ class Dataset(object):
             # Train a single classifier.
             train_weights = y.map(norm_class_weights)
             classifier = fit_classifier(features, y, train_weights,
-                                        n_estimators=2500)
+                                        n_estimators=700)
 
             importances = pd.DataFrame()
             importances['feature'] = features.columns
