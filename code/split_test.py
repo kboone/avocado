@@ -13,8 +13,6 @@ meta_data = pd.read_csv('../data/training_set_metadata.csv')
 test_meta_data = pd.read_csv('../data/test_set_metadata.csv')
 test_path = '../data/test_set.csv'
 
-os.mkdir('../data_split')
-
 # Number of rows so that we can print a progress bar. This is
 # kind of slow to compute and doesn't really matter so I hardcoded
 # the output here.

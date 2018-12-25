@@ -17,7 +17,7 @@ print("------ PREDICTING ------")
 
 all_scores = []
 chunk_d = plasticc_gp.Dataset()
-num_feature_files = len(glob.glob('../features/features_v1_test_*.h5'))
+num_feature_files = len(glob.glob('../features/features_v2_test_*.h5'))
 for chunk_id in tqdm.tqdm(range(num_feature_files)):
     chunk_d.load_chunk(chunk_id, load_flux_data=False)
     chunk_d.load_features()
@@ -30,5 +30,5 @@ all_scores = np.hstack(all_scores)
 
 # Save the results.
 # np.savez('scores_40_aug1.npz', scores=all_scores)
-np.savez('scores_40_aug3.npz', scores=all_scores)
+np.savez('scores.npz', scores=all_scores)
 # pickle.dump(all_scores, open('scores_40_aug2_lr0.03.pkl', 'wb'))

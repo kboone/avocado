@@ -30,7 +30,7 @@ class_galactic = {6: True, 15: False, 16: True, 42: False, 52: False, 53: True,
                   False, 92: True, 95: False}
 
 # Paths
-basedir = '/home/scpdata06/kboone/plasticc'
+basedir = '..'
 features_dir = '%s/features' % basedir
 
 # Reverse engineered cosmology used in sims
@@ -357,8 +357,8 @@ class Dataset(object):
         By default, the flux data is loaded which takes a long time. That can
         be turned off if desired.
         """
-        path = ("/home/scpdata06/kboone/plasticc/data_split/"
-                "plasticc_split_%04d.h5" % chunk_idx)
+        path = ("%s/data_split/plasticc_split_%04d.h5" % (basedir,
+                                                          chunk_idx))
         if load_flux_data:
             self.flux_data = pd.read_hdf(path, 'df')
         self.meta_data = pd.read_hdf(path, 'meta')
