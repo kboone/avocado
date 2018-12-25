@@ -10,6 +10,9 @@ step at a time. The main package is the `plasticc.py` file which contains the
 Dataset class which is used to read the lightcurve and meta data, compute and
 reload features and produce the final predictions.
 
+Everything here is highly experimental and unstable. Please inform me if you
+discover any major issues. A full write up of the methodology is forthcoming.
+
 ## Installation
 
 This package has the following dependencies:
