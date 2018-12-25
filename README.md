@@ -13,6 +13,11 @@ reload features and produce the final predictions.
 Everything here is highly experimental and unstable. Please inform me if you
 discover any major issues. A full write up of the methodology is forthcoming.
 
+This package is distributed under the Apache License, Version 2.0. Some parts
+of this package (namely, the metric calculation) came from a [Kaggle
+kernel](https://www.kaggle.com/ogrellier/plasticc-in-a-kernel-meta-and-data)
+from [Olivier](https://www.kaggle.com/ogrellier).
+
 ## Installation
 
 This package has the following dependencies:
