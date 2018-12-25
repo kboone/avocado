@@ -33,7 +33,7 @@ class_galactic = {6: True, 15: False, 16: True, 42: False, 52: False, 53: True,
 basedir = '/home/scpdata06/kboone/plasticc'
 features_dir = '%s/features' % basedir
 
-# Cosmology used in sims
+# Reverse engineered cosmology used in sims
 cosmo = FlatLambdaCDM(H0=70, Om0=0.3, Tcmb0=2.725)
 
 
