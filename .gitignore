@@ -1,0 +1,4 @@
+*.h5
+*.csv
+*.zip
+__pycache__
