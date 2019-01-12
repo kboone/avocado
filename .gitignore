@@ -1,4 +1,6 @@
 *.h5
 *.csv
 *.zip
+*.pkl
+*.npz
 __pycache__
