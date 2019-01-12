@@ -14,6 +14,7 @@ from scipy.signal import find_peaks
 from scipy.special import erf
 import tqdm
 
+from settings import settings
 
 # Parameters of the dataset
 num_passbands = 6
@@ -28,10 +29,6 @@ class_weights = {6: 1, 15: 2, 16: 1, 42: 1, 52: 1, 53: 1, 62: 1, 64: 2, 65: 1,
 class_galactic = {6: True, 15: False, 16: True, 42: False, 52: False, 53: True,
                   62: False, 64: False, 65: True, 67: False, 88: False, 90:
                   False, 92: True, 95: False}
-
-# Paths
-basedir = '..'
-features_dir = '%s/features' % basedir
 
 # Reverse engineered cosmology used in sims
 cosmo = FlatLambdaCDM(H0=70, Om0=0.3, Tcmb0=2.725)
@@ -322,15 +319,15 @@ class Dataset(object):
         self.dataset_name = None
 
         # Update this whenever the feature calculation code is updated.
-        self._features_version = 2
+        self._features_version = settings['FEATURES_VERSION']
 
         # Update this whenever the augmentation code is updated.
-        self._augment_version = 3
+        self._augment_version = settings['AUGMENT_VERSION']
 
     def load_training_data(self):
         """Load the training dataset."""
-        self.flux_data = pd.read_csv('../data/training_set.csv')
-        self.meta_data = pd.read_csv('../data/training_set_metadata.csv')
+        self.flux_data = pd.read_csv(settings['RAW_TRAINING_PATH'])
+        self.meta_data = pd.read_csv(settings["RAW_TRAINING_METADATA_PATH"])
 
         # Label folds
         y = self.meta_data['target']
@@ -344,7 +341,7 @@ class Dataset(object):
 
     def load_test_data(self):
         """Load the test metadata."""
-        self.meta_data = pd.read_csv('../data/test_set_metadata.csv')
+        self.meta_data = pd.read_csv(settings["RAW_TEST_METADATA_PATH"])
 
         self.dataset_name = 'test'
 
@@ -357,8 +354,7 @@ class Dataset(object):
         By default, the flux data is loaded which takes a long time. That can
         be turned off if desired.
         """
-        path = ("%s/data_split/plasticc_split_%04d.h5" % (basedir,
-                                                          chunk_idx))
+        path = settings["SPLIT_TEST_PATH_FORMAT"] % chunk_idx
         if load_flux_data:
             self.flux_data = pd.read_hdf(path, 'df')
         self.meta_data = pd.read_hdf(path, 'meta')
@@ -370,8 +366,7 @@ class Dataset(object):
         dataset_name = '%s_augment_v%d_%d' % (
             base_name, self._augment_version, num_augments
         )
-        path = '%s/augment/%s.h5' % (basedir, dataset_name)
-        print(path)
+        path = '%s/%s.h5' % (settings['AUGMENT_PATH'], dataset_name)
 
         self.flux_data = pd.read_hdf(path, 'df')
         self.meta_data = pd.read_hdf(path, 'meta')
@@ -381,8 +376,8 @@ class Dataset(object):
     @property
     def features_path(self):
         """Path to the features file for this dataset"""
-        features_path = '%s/features_v%d_%s.h5' % (
-            features_dir, self._features_version, self.dataset_name)
+        features_path = settings['FEATURES_PATH_FORMAT'] % (
+            self._features_version, self.dataset_name)
         return features_path
 
     def load_features(self):
@@ -1007,7 +1002,8 @@ class Dataset(object):
         all_aug_meta = []
         all_aug_data = []
 
-        for idx in tqdm.tqdm(range(len(self.meta_data))):
+        # for idx in tqdm.tqdm(range(len(self.meta_data))):
+        for idx in tqdm.tqdm(range(10)):
             # Keep the real training data
             object_meta = self.meta_data.iloc[idx]
             object_data = self.flux_data[self.flux_data['object_id'] ==
@@ -1042,13 +1038,11 @@ class Dataset(object):
             self.dataset_name, self._augment_version, num_augments)
 
         # Save the results of the augmentation
-        output_path = '%s/augment/%s.h5' % (basedir, new_dataset.dataset_name)
+        output_path = '%s/%s.h5' % (settings['AUGMENT_PATH'],
+                                    new_dataset.dataset_name)
 
-        try:
-            new_dataset.meta_data.to_hdf(output_path, key='meta', mode='w')
-            new_dataset.flux_data.to_hdf(output_path, key='df')
-        except:
-            print("Failed to save!")
+        new_dataset.meta_data.to_hdf(output_path, key='meta', mode='w')
+        new_dataset.flux_data.to_hdf(output_path, key='df')
 
         return new_dataset
 

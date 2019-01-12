@@ -1,0 +1,26 @@
+{
+    "RAW_DATA_DIR": "./data",
+    "RAW_TRAINING_PATH": "./data/training_set.csv",
+    "RAW_TRAINING_METADATA_PATH": "./data/training_set_metadata.csv",
+    "RAW_TEST_PATH": "./data/test_set.csv",
+    "RAW_TEST_METADATA_PATH": "./data/test_set_metadata.csv",
+
+    "SPLIT_TEST_PATH": "./data_split",
+    "SPLIT_TEST_PATH_FORMAT": "./data_split/plasticc_split_%04d.h5",
+
+    "FEATURES_PATH": "./features",
+    "FEATURES_PATH_FORMAT": "./features/features_v%d_%s.h5",
+    "FEATURES_VERSION": 2,
+
+    "AUGMENT_PATH": "./augment",
+    "AUGMENT_PATH_FORMAT": "./augment/%s.h5",
+    "NUM_AUGMENTS": 2,
+    "AUGMENT_VERSION": 3,
+
+
+    "TRAIN_DATA_CLEAN_PATH": "./data/processed/train.csv",
+    "TEST_DATA_CLEAN_PATH": "./data/processed/test.csv",
+    "MODEL_CHECKPOINT_DIR": "./models/",
+    "LOGS_DIR": "./logs/",
+    "SUBMISSION_DIR": "./submissions/"
+}

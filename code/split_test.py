@@ -8,18 +8,14 @@ import pandas as pd
 import tqdm
 import os
 
-flux_data = pd.read_csv('../data/training_set.csv')
-meta_data = pd.read_csv('../data/training_set_metadata.csv')
-test_meta_data = pd.read_csv('../data/test_set_metadata.csv')
-test_path = '../data/test_set.csv'
+from settings import settings
 
-# Number of rows so that we can print a progress bar. This is
-# kind of slow to compute and doesn't really matter so I hardcoded
-# the output here.
-# num_rows = sum(1 for row in open(test_path, 'r'))
-num_rows = 453653105
+test_meta_data = pd.read_csv(settings["RAW_TEST_METADATA_PATH"])
+test_path = settings["RAW_TEST_PATH"]
+split_path_file_format = settings["SPLIT_TEST_PATH_FORMAT"]
 
 # Find the object id for the last line in the file.
+print("Finding last object id")
 with open(test_path, 'rb') as f:
     f.seek(-2, os.SEEK_END)
     while f.read(1) != b'\n':
@@ -31,9 +27,9 @@ remainder = None
 
 chunk_size = 2*10**6
 
+print("Splitting test set")
 for chunk_idx, chunk in tqdm.tqdm(
-        enumerate(pd.read_csv(test_path, chunksize=chunk_size)),
-        total=num_rows // chunk_size + 1):
+        enumerate(pd.read_csv(test_path, chunksize=chunk_size))):
     if remainder is not None:
         chunk = pd.concat([remainder, chunk])
 
@@ -52,6 +48,5 @@ for chunk_idx, chunk in tqdm.tqdm(
     meta_chunk = test_meta_data[test_meta_data['object_id'].isin(object_ids)]
 
     # Write out the splits.
-    meta_chunk.to_hdf('../data_split/plasticc_split_%04d.h5' % chunk_idx,
-                      key='meta', mode='w')
-    chunk.to_hdf('../data_split/plasticc_split_%04d.h5' % chunk_idx, key='df')
+    meta_chunk.to_hdf(split_path_file_format % chunk_idx, key='meta', mode='w')
+    chunk.to_hdf(split_path_file_format % chunk_idx, key='df')
