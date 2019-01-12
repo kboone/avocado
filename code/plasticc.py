@@ -118,7 +118,10 @@ def lgb_multi_weighted_logloss(y_true, y_preds):
 def do_predictions_flatprob(object_ids, features, classifiers):
     pred = 0
     for classifier in classifiers:
-        pred += classifier.predict_proba(features) / len(classifiers)
+        pred += (
+            classifier.predict_proba(
+                features, num_iteration=classifier.best_iteration_)
+        ) / len(classifiers)
 
     # Add in flat prediction for class 99. This prediction depends on whether
     # the object is galactic or extragalactic.
@@ -161,7 +164,9 @@ def do_predictions(object_ids, features, classifiers, gal_outlier_score=0.25,
     pred = 0
     for classifier in classifiers:
         # Get base scores
-        raw_scores = classifier.predict_proba(features, raw_score=True)
+        raw_scores = classifier.predict_proba(
+            features, raw_score=True, num_iteration=classifier.best_iteration_
+        )
         max_scores = np.max(raw_scores, axis=1)[:, None]
         class_99_scores = np.clip(base_class_99_scores, None,
                                   max_scores)
@@ -184,8 +189,9 @@ def do_predictions(object_ids, features, classifiers, gal_outlier_score=0.25,
 def do_scores(object_ids, features, classifiers):
     scores = []
     for classifier in classifiers:
-        scores.append(classifier.predict_proba(features,
-                                               raw_score=True))
+        scores.append(classifier.predict_proba(
+            features, raw_score=True,
+            num_iteration=classifier.best_iteration_))
     scores = np.array(scores)
 
     return scores
@@ -366,7 +372,7 @@ class Dataset(object):
         dataset_name = '%s_augment_v%d_%d' % (
             base_name, self._augment_version, num_augments
         )
-        path = '%s/%s.h5' % (settings['AUGMENT_PATH'], dataset_name)
+        path = '%s/%s.h5' % (settings['AUGMENT_DIR'], dataset_name)
 
         self.flux_data = pd.read_hdf(path, 'df')
         self.meta_data = pd.read_hdf(path, 'meta')
@@ -1002,8 +1008,7 @@ class Dataset(object):
         all_aug_meta = []
         all_aug_data = []
 
-        # for idx in tqdm.tqdm(range(len(self.meta_data))):
-        for idx in tqdm.tqdm(range(10)):
+        for idx in tqdm.tqdm(range(len(self.meta_data))):
             # Keep the real training data
             object_meta = self.meta_data.iloc[idx]
             object_data = self.flux_data[self.flux_data['object_id'] ==
@@ -1038,7 +1043,7 @@ class Dataset(object):
             self.dataset_name, self._augment_version, num_augments)
 
         # Save the results of the augmentation
-        output_path = '%s/%s.h5' % (settings['AUGMENT_PATH'],
+        output_path = '%s/%s.h5' % (settings['AUGMENT_DIR'],
                                     new_dataset.dataset_name)
 
         new_dataset.meta_data.to_hdf(output_path, key='meta', mode='w')
@@ -1121,3 +1126,17 @@ class Dataset(object):
         self.importances = importances
 
         return classifiers
+
+
+def save_classifiers(classifiers, path):
+    """Save a list of classifiers to a path as a pickle file"""
+    with open(path, 'wb') as fout:
+        pickle.dump(classifiers, fout)
+
+
+def load_classifiers(path):
+    """Load a list of classifiers from a path"""
+    with open(path, 'rb') as fin:
+        classifiers = pickle.load(fin)
+
+    return classifiers

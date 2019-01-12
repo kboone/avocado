@@ -7,21 +7,17 @@ import tqdm
 
 from settings import settings
 
-print("------ TRAINING ------")
-d = plasticc.Dataset()
-d.load_augment(settings['NUM_CHUNKS'])
-d.load_features()
+# Load the classifiers
+num_augments = settings['NUM_AUGMENTS']
+classifiers = plasticc.load_classifiers(settings['MODEL_PATH_FORMAT'] %
+                                        num_augments)
 
-classifiers = d.train_classifiers(do_fold=True)
-
-
-print("------ PREDICTING ------")
-
+# Do the predictions.
 all_scores = []
 chunk_d = plasticc.Dataset()
 num_chunks = len(glob.glob('%s/plasticc_split_*.h5' %
-                           settings['SPLIT_TEST_PATH']))
-print("Found %d chunks" % num_chunks)
+                           settings['SPLIT_TEST_DIR']))
+print("Doing predictions for %d chunks" % num_chunks)
 for chunk_id in tqdm.tqdm(range(num_chunks)):
     chunk_d.load_chunk(chunk_id, load_flux_data=False)
     chunk_d.load_features()
@@ -32,5 +28,7 @@ for chunk_id in tqdm.tqdm(range(num_chunks)):
 
 all_scores = np.hstack(all_scores)
 
-# Save the results.
-np.savez('scores.npz', scores=all_scores)
+# Save the results. With only 16 GB of RAM, saving to a nice format like HDF
+# crashes here. For whatever reason, np.savez uses a lot less memory so we use
+# that.
+np.savez(settings['SCORES_PATH_FORMAT'] % num_augments, scores=all_scores)

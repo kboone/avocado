@@ -1,7 +1,12 @@
 import pandas as pd
 import numpy as np
 
-dataset = pd.read_csv('./pred.csv').set_index('object_id')
+from settings import settings
+
+num_augments = settings['NUM_AUGMENTS']
+
+dataset = pd.read_csv(settings['SUBMISSIONS_PATH_FORMAT'] % num_augments)
+dataset = dataset.set_index('object_id')
 
 gal_classes = [6, 16, 53, 65, 92]
 extgal_classes = [15, 42, 52, 62, 64, 67, 88, 90, 95]
@@ -42,4 +47,4 @@ dataset['class_99'][~is_gal] = pred_99_extgal[~is_gal]
 # Normalize
 dataset = dataset.div(np.sum(dataset, axis=1), axis=0)
 
-dataset.to_csv('./pred_probe.csv')
+dataset.to_csv(settings['SUBMISSIONS_PROBE99_PATH_FORMAT'] % num_augments)

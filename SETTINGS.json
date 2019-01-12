@@ -5,22 +5,25 @@
     "RAW_TEST_PATH": "./data/test_set.csv",
     "RAW_TEST_METADATA_PATH": "./data/test_set_metadata.csv",
 
-    "SPLIT_TEST_PATH": "./data_split",
+    "SPLIT_TEST_DIR": "./data_split",
     "SPLIT_TEST_PATH_FORMAT": "./data_split/plasticc_split_%04d.h5",
 
-    "FEATURES_PATH": "./features",
+    "FEATURES_DIR": "./features",
     "FEATURES_PATH_FORMAT": "./features/features_v%d_%s.h5",
     "FEATURES_VERSION": 2,
 
-    "AUGMENT_PATH": "./augment",
+    "AUGMENT_DIR": "./augment",
     "AUGMENT_PATH_FORMAT": "./augment/%s.h5",
-    "NUM_AUGMENTS": 2,
+    "NUM_AUGMENTS": 40,
     "AUGMENT_VERSION": 3,
 
+    "MODEL_DIR": "./model",
+    "MODEL_PATH_FORMAT": "./model/model_%d.pkl",
 
-    "TRAIN_DATA_CLEAN_PATH": "./data/processed/train.csv",
-    "TEST_DATA_CLEAN_PATH": "./data/processed/test.csv",
-    "MODEL_CHECKPOINT_DIR": "./models/",
-    "LOGS_DIR": "./logs/",
-    "SUBMISSION_DIR": "./submissions/"
+    "SCORES_DIR": "./scores",
+    "SCORES_PATH_FORMAT": "./scores/scores_%d.npz",
+
+    "SUBMISSIONS_DIR": "./submissions/",
+    "SUBMISSIONS_PATH_FORMAT": "./submissions/submission_%d.csv",
+    "SUBMISSIONS_PROBE99_PATH_FORMAT": "./submissions/submission_probe99_%d.csv"
 }
