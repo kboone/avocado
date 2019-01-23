@@ -386,6 +386,137 @@ class Dataset(object):
             self._features_version, self.dataset_name)
         return features_path
 
+    def load_simple_features(self):
+        """Load the features for a dataset and postprocess them.
+
+        This assumes that the features have already been created.
+        """
+        self.raw_features = pd.read_hdf(self.features_path)
+
+        rf = self.raw_features
+
+        # Keys that we want to use in the prediction.
+        use_keys = [
+            'hostgal_photoz',
+            'hostgal_photoz_err',
+            'count',
+        ]
+
+        features = rf[use_keys].copy()
+
+        features['length_scale'] = rf['gp_fit_1']
+
+        features['max_flux'] = rf['max_flux_3']
+        features['max_flux_ratio_r'] = (
+            (rf['max_flux_5'] - rf['max_flux_3']) /
+            (np.abs(rf['max_flux_5']) + np.abs(rf['max_flux_3']))
+        )
+        features['max_flux_ratio_b'] = (
+            (rf['max_flux_3'] - rf['max_flux_0']) /
+            (np.abs(rf['max_flux_3']) + np.abs(rf['max_flux_0']))
+        )
+
+        features['min_flux'] = rf['min_flux_3']
+        features['min_flux_ratio_r'] = (
+            (rf['min_flux_5'] - rf['min_flux_3']) /
+            (np.abs(rf['min_flux_5']) + np.abs(rf['min_flux_3']))
+        )
+        features['min_flux_ratio_b'] = (
+            (rf['min_flux_3'] - rf['min_flux_0']) /
+            (np.abs(rf['min_flux_3']) + np.abs(rf['min_flux_0']))
+        )
+
+        features['max_dt'] = rf['max_dt_5'] - rf['max_dt_0']
+
+        features['positive_width'] = rf['positive_width_3']
+        features['negative_width'] = rf['negative_width_3']
+
+        features['frac_time_fwd_0.8'] = rf['frac_time_fwd_0.8_3']
+        features['frac_time_fwd_0.5'] = rf['frac_time_fwd_0.5_3']
+        features['frac_time_fwd_0.2'] = rf['frac_time_fwd_0.2_3']
+
+        features['ratio_r_time_fwd_0.8'] = (
+            rf['frac_time_fwd_0.8_3'] / rf['frac_time_fwd_0.8_5'])
+        features['ratio_b_time_fwd_0.8'] = (
+            rf['frac_time_fwd_0.8_3'] / rf['frac_time_fwd_0.8_0'])
+        features['ratio_r_time_fwd_0.5'] = (
+            rf['frac_time_fwd_0.5_3'] / rf['frac_time_fwd_0.5_5'])
+        features['ratio_b_time_fwd_0.5'] = (
+            rf['frac_time_fwd_0.5_3'] / rf['frac_time_fwd_0.5_0'])
+        features['ratio_r_time_fwd_0.2'] = (
+            rf['frac_time_fwd_0.2_3'] / rf['frac_time_fwd_0.2_5'])
+        features['ratio_b_time_fwd_0.5'] = (
+            rf['frac_time_fwd_0.2_3'] / rf['frac_time_fwd_0.2_0'])
+
+        features['frac_time_bwd_0.8'] = rf['frac_time_bwd_0.8_3']
+        features['frac_time_bwd_0.5'] = rf['frac_time_bwd_0.5_3']
+        features['frac_time_bwd_0.2'] = rf['frac_time_bwd_0.2_3']
+
+        features['ratio_r_time_bwd_0.8'] = (
+            rf['frac_time_bwd_0.8_3'] / rf['frac_time_bwd_0.8_5'])
+        features['ratio_b_time_bwd_0.8'] = (
+            rf['frac_time_bwd_0.8_3'] / rf['frac_time_bwd_0.8_0'])
+        features['ratio_r_time_bwd_0.5'] = (
+            rf['frac_time_bwd_0.5_3'] / rf['frac_time_bwd_0.5_5'])
+        features['ratio_b_time_bwd_0.5'] = (
+            rf['frac_time_bwd_0.5_3'] / rf['frac_time_bwd_0.5_0'])
+        features['ratio_r_time_bwd_0.2'] = (
+            rf['frac_time_bwd_0.2_3'] / rf['frac_time_bwd_0.2_5'])
+        features['ratio_b_time_bwd_0.5'] = (
+            rf['frac_time_bwd_0.2_3'] / rf['frac_time_bwd_0.2_0'])
+
+        features['frac_s2n_5'] = rf['count_s2n_5'] / rf['count']
+        features['frac_s2n_-5'] = rf['count_s2n_-5'] / rf['count']
+        features['frac_background'] = rf['frac_background']
+
+        features['time_width_s2n_5'] = rf['time_width_s2n_5']
+
+        features['count_max_center'] = rf['count_max_center']
+        features['count_max_rise_20'] = rf['count_max_rise_20']
+        features['count_max_rise_50'] = rf['count_max_rise_50']
+        features['count_max_rise_100'] = rf['count_max_rise_100']
+        features['count_max_fall_20'] = rf['count_max_fall_20']
+        features['count_max_fall_50'] = rf['count_max_fall_50']
+        features['count_max_fall_100'] = rf['count_max_fall_100']
+
+        features['num_peaks'] = np.nanmedian([
+            rf['peaks_pos_0_count'],
+            rf['peaks_pos_1_count'],
+            rf['peaks_pos_2_count'],
+            rf['peaks_pos_3_count'],
+            rf['peaks_pos_4_count'],
+            rf['peaks_pos_5_count']
+        ], axis=0)
+
+        features['peak_frac_2'] = np.nanmedian([
+            rf['peaks_pos_0_frac_2'],
+            rf['peaks_pos_1_frac_2'],
+            rf['peaks_pos_2_frac_2'],
+            rf['peaks_pos_3_frac_2'],
+            rf['peaks_pos_4_frac_2'],
+            rf['peaks_pos_5_frac_2']
+        ], axis=0)
+
+        features['peak_frac_3'] = np.nanmedian([
+            rf['peaks_pos_0_frac_3'],
+            rf['peaks_pos_1_frac_3'],
+            rf['peaks_pos_2_frac_3'],
+            rf['peaks_pos_3_frac_3'],
+            rf['peaks_pos_4_frac_3'],
+            rf['peaks_pos_5_frac_3']
+        ], axis=0)
+
+        features['total_s2n'] = (
+            rf['total_s2n_0'] +
+            rf['total_s2n_1'] +
+            rf['total_s2n_2'] +
+            rf['total_s2n_3'] +
+            rf['total_s2n_4'] +
+            rf['total_s2n_5']
+        )
+
+        self.features = features
+
     def load_features(self):
         """Load the features for a dataset and postprocess them.
 

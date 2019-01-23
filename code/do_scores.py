@@ -20,7 +20,7 @@ num_chunks = len(glob.glob('%s/plasticc_split_*.h5' %
 print("Doing predictions for %d chunks" % num_chunks)
 for chunk_id in tqdm.tqdm(range(num_chunks)):
     chunk_d.load_chunk(chunk_id, load_flux_data=False)
-    chunk_d.load_features()
+    chunk_d.load_simple_features()
 
     scores = plasticc.do_scores(chunk_d.meta_data['object_id'],
                                 chunk_d.features, classifiers)

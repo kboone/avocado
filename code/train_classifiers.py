@@ -10,7 +10,7 @@ from settings import settings
 num_augments = settings['NUM_AUGMENTS']
 d = plasticc.Dataset()
 d.load_augment(num_augments)
-d.load_features()
+d.load_simple_features()
 
 print("Training classifiers for %d augments." % num_augments)
 classifiers = d.train_classifiers(do_fold=True)
