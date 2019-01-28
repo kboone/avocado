@@ -10,15 +10,15 @@ more complicated workflow that is incompatible with the Kaggle requirements can
 be found at README\_OLD.md.
 
 # ARCHIVE CONTENTS
-augment             : Folder for augmented datasets, created from the training data.
-code                : Directory containing all of the code used to generate the submissions.
-data                : Location where the raw data from Kaggle is stored.
-data_split          : Location where the test data is stored after being split into smaller chunks
-features            : Folder for features extracted from the various sets.
-model               : Directory containing serialized models.
-scores              : Location where the scores for the test set are output.
-submissions         : Output directory for the final submissions to Kaggle.
-SETTINGS.json       : Settings file to specify the various parameters of the model and directories to work in.
+- augment             : Folder for augmented datasets, created from the training data.
+- code                : Directory containing all of the code used to generate the submissions.
+- data                : Location where the raw data from Kaggle is stored.
+- data_split          : Location where the test data is stored after being split into smaller chunks
+- features            : Folder for features extracted from the various sets.
+- model               : Directory containing serialized models.
+- scores              : Location where the scores for the test set are output.
+- submissions         : Output directory for the final submissions to Kaggle.
+- SETTINGS.json       : Settings file to specify the various parameters of the model and directories to work in.
 
 # HARDWARE: (The following specs were used to create the original solution)
 Most of the code was run on a machine with the following specifications:
