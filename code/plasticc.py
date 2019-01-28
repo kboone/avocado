@@ -1191,8 +1191,11 @@ class Dataset(object):
 
         # Compute training weights.
         w = y.value_counts()
-        norm_class_weights = {i: class_weights[i] * np.sum(w) / w[i] for i in
-                              w.index}
+        if settings['FLAT_WEIGHT']:
+            norm_class_weights = {i: 16 for i in w.index}
+        else:
+            norm_class_weights = {i: class_weights[i] * np.sum(w) / w[i] for i
+                                  in w.index}
 
         if do_fold:
             # Do CV on folds.

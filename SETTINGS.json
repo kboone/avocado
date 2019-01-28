@@ -20,6 +20,8 @@
     "MODEL_DIR": "./model",
     "MODEL_PATH_FORMAT": "./model/model_%d.pkl",
 
+    "FLAT_WEIGHT": false,
+
     "SCORES_DIR": "./scores",
     "SCORES_PATH_FORMAT": "./scores/scores_%d.npz",
 
