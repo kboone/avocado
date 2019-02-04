@@ -7,6 +7,7 @@ import numpy as np
 import os
 import pandas as pd
 import pickle
+from astropy.table import Table
 from astropy.cosmology import FlatLambdaCDM
 from scipy.optimize import minimize
 from sklearn.model_selection import StratifiedKFold
@@ -29,6 +30,10 @@ class_weights = {6: 1, 15: 2, 16: 1, 42: 1, 52: 1, 53: 1, 62: 1, 64: 2, 65: 1,
 class_galactic = {6: True, 15: False, 16: True, 42: False, 52: False, 53: True,
                   62: False, 64: False, 65: True, 67: False, 88: False, 90:
                   False, 92: True, 95: False}
+
+# Band names
+band_names = ['u', 'g', 'r', 'i', 'z', 'y']
+band_colors = ['C6', 'C4', 'C0', 'C2', 'C3', 'goldenrod']
 
 # Reverse engineered cosmology used in sims
 cosmo = FlatLambdaCDM(H0=70, Om0=0.3, Tcmb0=2.725)
@@ -345,10 +350,14 @@ class Dataset(object):
 
         self.dataset_name = 'train'
 
-    def load_test_data(self):
+    def load_test_data(self, unblind=False):
         """Load the test metadata."""
-        self.meta_data = pd.read_csv(settings["RAW_TEST_METADATA_PATH"])
+        if unblind:
+            meta_path = settings["UNBLIND_TEST_METADATA_PATH"]
+        else:
+            meta_path = settings["RAW_TEST_METADATA_PATH"]
 
+        self.meta_data = pd.read_csv(meta_path)
         self.dataset_name = 'test'
 
     def load_chunk(self, chunk_idx, load_flux_data=True):
@@ -386,7 +395,14 @@ class Dataset(object):
             self._features_version, self.dataset_name)
         return features_path
 
-    def load_simple_features(self):
+    @property
+    def salt_fits_path(self):
+        """Path to the features file for this dataset"""
+        salt_fits_path = settings['SALT_FITS_PATH_FORMAT'] % (
+            self.dataset_name)
+        return salt_fits_path
+
+    def load_simple_features(self, apply_photoz=False):
         """Load the features for a dataset and postprocess them.
 
         This assumes that the features have already been created.
@@ -394,6 +410,24 @@ class Dataset(object):
         self.raw_features = pd.read_hdf(self.features_path)
 
         rf = self.raw_features
+
+        # If desired, undo the photoz
+        max_flux = rf['max_flux_3'] - rf['min_flux_3']
+        max_mag = -2.5*np.log10(np.abs(max_flux))
+
+        if apply_photoz:
+            distmod = rf['distmod']
+            photoz = rf['hostgal_photoz']
+
+            # Turn max brightness into luminosity for extragalactic objects
+            extgal_mask = photoz != 0
+            max_mag[extgal_mask] = (
+                max_mag[extgal_mask] - distmod[extgal_mask] + 28
+            )
+
+            time_scale = (1 + rf['hostgal_photoz'])
+        else:
+            time_scale = 1
 
         # Keys that we want to use in the prediction.
         use_keys = [
@@ -404,9 +438,12 @@ class Dataset(object):
 
         features = rf[use_keys].copy()
 
-        features['length_scale'] = rf['gp_fit_1']
+        features['length_scale'] = rf['gp_fit_1'] / time_scale
 
-        features['max_flux'] = rf['max_flux_3']
+        # features['max_flux'] = rf['max_flux_3']
+        features['max_mag'] = max_mag
+
+        features['pos_flux_ratio'] = rf['max_flux_3'] / max_flux
         features['max_flux_ratio_r'] = (
             (rf['max_flux_5'] - rf['max_flux_3']) /
             (np.abs(rf['max_flux_5']) + np.abs(rf['max_flux_3']))
@@ -416,7 +453,7 @@ class Dataset(object):
             (np.abs(rf['max_flux_3']) + np.abs(rf['max_flux_0']))
         )
 
-        features['min_flux'] = rf['min_flux_3']
+        # features['min_flux'] = rf['min_flux_3']
         features['min_flux_ratio_r'] = (
             (rf['min_flux_5'] - rf['min_flux_3']) /
             (np.abs(rf['min_flux_5']) + np.abs(rf['min_flux_3']))
@@ -426,14 +463,14 @@ class Dataset(object):
             (np.abs(rf['min_flux_3']) + np.abs(rf['min_flux_0']))
         )
 
-        features['max_dt'] = rf['max_dt_5'] - rf['max_dt_0']
+        features['max_dt'] = (rf['max_dt_5'] - rf['max_dt_0']) / time_scale
 
-        features['positive_width'] = rf['positive_width_3']
-        features['negative_width'] = rf['negative_width_3']
+        features['positive_width'] = rf['positive_width_3'] / time_scale
+        features['negative_width'] = rf['negative_width_3'] / time_scale
 
-        features['frac_time_fwd_0.8'] = rf['frac_time_fwd_0.8_3']
-        features['frac_time_fwd_0.5'] = rf['frac_time_fwd_0.5_3']
-        features['frac_time_fwd_0.2'] = rf['frac_time_fwd_0.2_3']
+        features['frac_time_fwd_0.8'] = rf['frac_time_fwd_0.8_3'] / time_scale
+        features['frac_time_fwd_0.5'] = rf['frac_time_fwd_0.5_3'] / time_scale
+        features['frac_time_fwd_0.2'] = rf['frac_time_fwd_0.2_3'] / time_scale
 
         features['ratio_r_time_fwd_0.8'] = (
             rf['frac_time_fwd_0.8_3'] / rf['frac_time_fwd_0.8_5'])
@@ -448,9 +485,9 @@ class Dataset(object):
         features['ratio_b_time_fwd_0.5'] = (
             rf['frac_time_fwd_0.2_3'] / rf['frac_time_fwd_0.2_0'])
 
-        features['frac_time_bwd_0.8'] = rf['frac_time_bwd_0.8_3']
-        features['frac_time_bwd_0.5'] = rf['frac_time_bwd_0.5_3']
-        features['frac_time_bwd_0.2'] = rf['frac_time_bwd_0.2_3']
+        features['frac_time_bwd_0.8'] = rf['frac_time_bwd_0.8_3'] / time_scale
+        features['frac_time_bwd_0.5'] = rf['frac_time_bwd_0.5_3'] / time_scale
+        features['frac_time_bwd_0.2'] = rf['frac_time_bwd_0.2_3'] / time_scale
 
         features['ratio_r_time_bwd_0.8'] = (
             rf['frac_time_bwd_0.8_3'] / rf['frac_time_bwd_0.8_5'])
@@ -469,7 +506,7 @@ class Dataset(object):
         features['frac_s2n_-5'] = rf['count_s2n_-5'] / rf['count']
         features['frac_background'] = rf['frac_background']
 
-        features['time_width_s2n_5'] = rf['time_width_s2n_5']
+        features['time_width_s2n_5'] = rf['time_width_s2n_5'] / time_scale
 
         features['count_max_center'] = rf['count_max_center']
         features['count_max_rise_20'] = rf['count_max_rise_20']
@@ -620,7 +657,8 @@ class Dataset(object):
         return self._get_gp_data(object_meta, object_data)
 
     def fit_gp(self, idx=None, target=None, object_meta=None, object_data=None,
-               verbose=False, guess_length_scale=20., fix_scale=False):
+               verbose=False, guess_length_scale=20., fix_scale=False,
+               uncertainties=False):
         if idx is not None:
             # idx was specified, pull from the internal data
             gp_data = self.get_gp_data(idx, target, verbose)
@@ -691,6 +729,7 @@ class Dataset(object):
             print(kernel.get_parameter_dict())
 
         pred = []
+        pred_var = []
         pred_times = np.arange(end_mjd - start_mjd + 1)
 
         for band in range(6):
@@ -700,9 +739,18 @@ class Dataset(object):
             # band_pred, pred_var = gp.predict(fluxes, pred_x_data,
             # return_var=True)
             # band_pred = gp.predict(fluxes, pred_x_data, return_var=False)
-            band_pred = gp.predict(fluxes, pred_x_data, return_cov=False)
+            if uncertainties:
+                band_pred, band_pred_var = gp.predict(fluxes, pred_x_data,
+                                                      return_var=True)
+                pred_var.append(band_pred_var)
+            else:
+                band_pred = gp.predict(fluxes, pred_x_data, return_cov=False)
             pred.append(band_pred)
         pred = np.array(pred)
+
+        if uncertainties:
+            pred_var = np.array(pred_var)
+            gp_data['pred_var'] = pred_var
 
         # Add results of the GP fit to the gp_data dictionary.
         gp_data['pred_times'] = pred_times
@@ -711,20 +759,35 @@ class Dataset(object):
 
         return gp_data
 
-    def plot_gp(self, *args, **kwargs):
+    def plot_gp(self, *args, data_only=False, **kwargs):
         result = self.fit_gp(*args, **kwargs)
 
         plt.figure()
 
         for band in range(num_passbands):
             cut = result['bands'] == band
-            color = 'C%d' % band
+            color = band_colors[band]
             plt.errorbar(result['times'][cut], result['fluxes'][cut],
-                         result['flux_errs'][cut], fmt='o', c=color)
-            plt.plot(result['pred_times'], result['pred'][band], c=color,
-                     label=band)
+                         result['flux_errs'][cut], fmt='o', c=color,
+                         markersize=5, label=band_names[band])
+
+            if data_only:
+                continue
+
+            plt.plot(result['pred_times'], result['pred'][band], c=color)
+
+            if kwargs['uncertainties']:
+                # Show uncertainties with a shaded band
+                pred = result['pred'][band]
+                err = np.sqrt(result['pred_var'][band])
+                plt.fill_between(result['pred_times'], pred-err, pred+err,
+                                 alpha=0.2, color=color)
 
         plt.legend()
+
+        plt.xlabel('Time (days)')
+        plt.ylabel('Flux')
+        plt.tight_layout()
 
     def plot_gp_interactive(self):
         """Make an interactive plot of the GP output.
@@ -746,7 +809,8 @@ class Dataset(object):
         update_idx_range()
 
         interact(self.plot_gp, idx=idx_widget, target=target_widget,
-                 object_meta=fixed(None), object_data=fixed(None))
+                 object_meta=fixed(None), object_data=fixed(None),
+                 uncertainties=False, data_only=False)
 
     def extract_features(self, *args, **kwargs):
         """Extract features from a target"""
@@ -1260,6 +1324,123 @@ class Dataset(object):
         self.importances = importances
 
         return classifiers
+
+    def fit_salt(self, *args, full_return=False, verbose=False, **kwargs):
+        """Perform a SALT2 fit on an object using sncosmo"""
+        import sncosmo
+        gp_data = self.fit_gp(*args, **kwargs)
+        fit_data = Table({
+            'time': gp_data['times'],
+            'band': ['lsst%s' % ['u', 'g', 'r', 'i', 'z', 'y'][i] for i in
+                     gp_data['bands']],
+            'flux': gp_data['fluxes'],
+            'fluxerr': gp_data['flux_errs'],
+            'zp': [20. for i in range(len(gp_data['bands']))],
+            'zpsys': ['ab' for i in range(len(gp_data['bands']))],
+        })
+
+        model = sncosmo.Model(source='salt2-extended')
+        guess_z = gp_data['meta']['hostgal_photoz']
+        guess_z_err = gp_data['meta']['hostgal_photoz_err']
+
+        weights = []
+        guess_maxes = []
+        for band in range(6):
+            mask = gp_data['bands'] == band
+            band_guess_max = gp_data['times'][mask][
+                np.argmax(gp_data['fluxes'][mask])]
+
+            guess_maxes.append(band_guess_max)
+
+            s2ns = gp_data['fluxes'][mask] / gp_data['flux_errs'][mask]
+            # Weight is total s/n in each band
+            weights.append(np.sqrt(np.sum(s2ns**2)))
+        weights = np.array(weights)
+        guess_maxes = np.array(guess_maxes)
+
+        guess_max = weighted_median(guess_maxes, weights)
+
+        bounds = {
+            'x1': (-5, 5),
+            'c': (-1, 3),
+        }
+
+        fit_params = ['t0', 'x0', 'x1', 'c']
+
+        if guess_z > 1e-5:
+            model['z'] = guess_z
+            bounds['z'] = (max(1e-5, guess_z-3*guess_z_err),
+                           max(1e-5, guess_z+3*guess_z_err))
+            fit_params.append('z')
+        else:
+            # Fix z for galactic objects
+            model['z'] = 1e-5
+
+        model['t0'] = guess_max
+        model['x0'] = np.max(gp_data['fluxes']) * 1e-4
+
+        if verbose:
+            print("Guess z:    ", guess_z)
+            print("Guess z err:", guess_z_err)
+            try:
+                print("True z:     ", gp_data['meta']['hostgal_specz'])
+            except KeyError:
+                pass
+            print("Bounds:     ", bounds)
+
+        result, fitted_model = sncosmo.fit_lc(
+            fit_data,
+            model,
+            fit_params,
+            bounds=bounds,
+            guess_t0=False,
+            guess_z=False,
+            guess_amplitude=False
+        )
+
+        if verbose:
+            print("---")
+            print("    guess    fit")
+            if guess_z > 1e-5:
+                print("z:  %8.3f %8.3f" % (model['z'], fitted_model['z']))
+            print("t0: %8.3f %8.3f" % (model['t0'], fitted_model['t0']))
+            print("x0: %8.3f %8.3f" % (model['x0'], fitted_model['x0']))
+            print("x1: %8.3f %8.3f" % (model['x1'], fitted_model['x1']))
+            print("c:  %8.3f %8.3f" % (model['c'], fitted_model['c']))
+
+        if full_return:
+            return fit_data, result, fitted_model
+        else:
+            return dict(zip(fitted_model.param_names, fitted_model.parameters))
+
+    def fit_all_salt(self):
+        """Fit all lightcurves with SALT2 and save the results to an HDF file.
+        """
+        all_salt_fits = []
+        for i in tqdm.tqdm(range(len(self.meta_data))):
+            salt_fit = self.fit_salt(i)
+            all_salt_fits.append(salt_fit)
+
+        salt_fits_table = pd.DataFrame(all_salt_fits)
+        salt_fits_table.to_hdf(self.salt_fits_path, 'salt_fits', mode='w')
+
+        return salt_fits_table
+
+    def plot_salt(self, *args, **kwargs):
+        import sncosmo
+        fit_data, result, fitted_model = self.fit_salt(*args, full_return=True,
+                                                       **kwargs)
+        sncosmo.plot_lc(fit_data, model=fitted_model, errors=result.errors)
+
+
+def weighted_median(x, weights):
+    order = np.argsort(x)
+    order_x = x[order]
+    order_weights = weights[order]
+
+    total_weight = np.sum(order_weights)
+    med_loc = np.argwhere(np.cumsum(order_weights) > total_weight / 2)[0][0]
+    return order_x[med_loc]
 
 
 def save_classifiers(classifiers, path):
