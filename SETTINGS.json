@@ -11,7 +11,7 @@
 
     "FEATURES_DIR": "./features",
     "FEATURES_PATH_FORMAT": "./features/features_v%d_%s.h5",
-    "FEATURES_VERSION": 2,
+    "FEATURES_VERSION": 3,
 
     "SALT_FITS_DIR": "./salt_fits",
     "SALT_FITS_PATH_FORMAT": "./salt_fits/salt_fits_%s.h5",

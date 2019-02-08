@@ -33,6 +33,7 @@ class_galactic = {6: True, 15: False, 16: True, 42: False, 52: False, 53: True,
 
 # Band names
 band_names = ['u', 'g', 'r', 'i', 'z', 'y']
+band_wavelengths = [3671., 4827., 6223., 7546., 8691., 9710.]
 band_colors = ['C6', 'C4', 'C0', 'C2', 'C3', 'goldenrod']
 
 # Reverse engineered cosmology used in sims
@@ -605,6 +606,7 @@ class Dataset(object):
         fluxes = []
         bands = []
         flux_errs = []
+        wavelengths = []
 
         # The zeropoints were arbitrarily set from the first image. Pick the
         # 20th percentile of all observations in each channel as a new
@@ -628,12 +630,14 @@ class Dataset(object):
                 flux = row['flux']
                 if subtract_median:
                     flux = flux - ref_flux
-                fluxes.append(flux)
                 bands.append(passband)
+                wavelengths.append(band_wavelengths[passband])
+                fluxes.append(flux)
                 flux_errs.append(row['flux_err'])
 
         times = np.array(times)
         bands = np.array(bands)
+        wavelengths = np.array(wavelengths)
         fluxes = np.array(fluxes)
         flux_errs = np.array(flux_errs)
 
@@ -647,6 +651,7 @@ class Dataset(object):
             'times': times,
             'bands': bands,
             'scale': scale,
+            'wavelengths': wavelengths,
             'fluxes': fluxes,
             'flux_errs': flux_errs,
         }
@@ -670,8 +675,7 @@ class Dataset(object):
         return self._get_gp_data(object_meta, object_data)
 
     def fit_gp(self, idx=None, target=None, object_meta=None, object_data=None,
-               verbose=False, guess_length_scale=20., fix_scale=False,
-               uncertainties=False):
+               verbose=False, guess_length_scale=20., fix_scale=False):
         if idx is not None:
             # idx was specified, pull from the internal data
             gp_data = self.get_gp_data(idx, target, verbose)
@@ -685,7 +689,7 @@ class Dataset(object):
         # is also fixed. We fit for the kernel width in the time direction as
         # different transients evolve on very different time scales.
         kernel = ((0.2*gp_data['scale'])**2 *
-                  kernels.Matern32Kernel([guess_length_scale**2, 5**2],
+                  kernels.Matern32Kernel([guess_length_scale**2, 6000**2],
                                          ndim=2))
 
         # print(kernel.get_parameter_names())
@@ -698,7 +702,7 @@ class Dataset(object):
         if verbose:
             print(kernel.get_parameter_dict())
 
-        x_data = np.vstack([gp_data['times'], gp_data['bands']]).T
+        x_data = np.vstack([gp_data['times'], gp_data['wavelengths']]).T
 
         gp.compute(x_data, gp_data['flux_errs'])
 
@@ -741,23 +745,32 @@ class Dataset(object):
             print(fit_result)
             print(kernel.get_parameter_dict())
 
+        # Add results of the GP fit to the gp_data dictionary.
+        gp_data['fit_parameters'] = fit_result.x
+
+        return gp, gp_data
+
+    def predict_gp(self, *args, uncertainties=False, **kwargs):
+        gp, gp_data = self.fit_gp(*args, **kwargs)
+
         pred = []
         pred_var = []
         pred_times = np.arange(end_mjd - start_mjd + 1)
 
         for band in range(6):
-            pred_bands = np.ones(len(pred_times)) * band
+            pred_bands = np.ones(len(pred_times)) * band_wavelengths[band]
             pred_x_data = np.vstack([pred_times, pred_bands]).T
             # pred, pred_var = gp.predict(fluxes, pred_x_data, return_var=True)
             # band_pred, pred_var = gp.predict(fluxes, pred_x_data,
             # return_var=True)
             # band_pred = gp.predict(fluxes, pred_x_data, return_var=False)
             if uncertainties:
-                band_pred, band_pred_var = gp.predict(fluxes, pred_x_data,
-                                                      return_var=True)
+                band_pred, band_pred_var = gp.predict(
+                    gp_data['fluxes'], pred_x_data, return_var=True)
                 pred_var.append(band_pred_var)
             else:
-                band_pred = gp.predict(fluxes, pred_x_data, return_cov=False)
+                band_pred = gp.predict(gp_data['fluxes'], pred_x_data,
+                                       return_cov=False)
             pred.append(band_pred)
         pred = np.array(pred)
 
@@ -765,15 +778,14 @@ class Dataset(object):
             pred_var = np.array(pred_var)
             gp_data['pred_var'] = pred_var
 
-        # Add results of the GP fit to the gp_data dictionary.
+        # Add results of the GP prediction to the gp_data dictionary.
         gp_data['pred_times'] = pred_times
         gp_data['pred'] = pred
-        gp_data['fit_parameters'] = fit_result.x
 
         return gp_data
 
     def plot_gp(self, *args, data_only=False, **kwargs):
-        result = self.fit_gp(*args, **kwargs)
+        result = self.predict_gp(*args, **kwargs)
 
         plt.figure()
 
@@ -830,7 +842,7 @@ class Dataset(object):
         features = OrderedDict()
 
         # Fit the GP and produce an output model
-        gp_data = self.fit_gp(*args, **kwargs)
+        gp_data = self.predict_gp(*args, **kwargs)
         times = gp_data['times']
         fluxes = gp_data['fluxes']
         flux_errs = gp_data['flux_errs']
@@ -1395,7 +1407,7 @@ class Dataset(object):
     def fit_salt(self, *args, full_return=False, verbose=False, **kwargs):
         """Perform a SALT2 fit on an object using sncosmo"""
         import sncosmo
-        gp_data = self.fit_gp(*args, **kwargs)
+        gp_data = self.predict_gp(*args, **kwargs)
         fit_data = Table({
             'time': gp_data['times'],
             'band': ['lsst%s' % ['u', 'g', 'r', 'i', 'z', 'y'][i] for i in
