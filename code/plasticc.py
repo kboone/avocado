@@ -388,6 +388,19 @@ class Dataset(object):
 
         self.dataset_name = dataset_name
 
+    def load_unblind_meta(self):
+        """Load the unblinded meta data."""
+        meta_path = settings["UNBLIND_TEST_METADATA_PATH"]
+
+        unblind_meta = pd.read_csv(meta_path)
+
+        self.meta_data = self.meta_data.merge(
+            unblind_meta,
+            how='left',
+            on='object_id',
+            suffixes=('', '_unblind'),
+        )
+
     @property
     def features_path(self):
         """Path to the features file for this dataset"""
@@ -433,7 +446,7 @@ class Dataset(object):
         use_keys = [
             'hostgal_photoz',
             'hostgal_photoz_err',
-            'count',
+            # 'count',
         ]
 
         features = rf[use_keys].copy()
@@ -776,7 +789,7 @@ class Dataset(object):
 
             plt.plot(result['pred_times'], result['pred'][band], c=color)
 
-            if kwargs['uncertainties']:
+            if kwargs.get('uncertainties', False):
                 # Show uncertainties with a shaded band
                 pred = result['pred'][band]
                 err = np.sqrt(result['pred_var'][band])
@@ -1257,7 +1270,56 @@ class Dataset(object):
         w = y.value_counts()
         if settings['FLAT_WEIGHT']:
             norm_class_weights = {i: 16 for i in w.index}
+        elif settings['REDSHIFT_WEIGHT']:
+            # Reweight in each redshift bin along with in each class bin so
+            # that the classifier can't just use the redshift distribution of
+            # the different classes to classify things.
+            # redshift_bins = np.hstack([-1, 0, np.logspace(-1, np.log10(3), 10),
+                                       # 100])
+            redshift_bins = np.hstack([-50, np.linspace(-8, 0, 10), 5, 50])
+            target_map = {j: i for i, j in enumerate(classes)}
+
+            counts = np.zeros((len(redshift_bins), len(target_map)))
+
+            # redshift_indices = np.searchsorted(
+                # redshift_bins, self.meta_data['hostgal_specz']) - 1
+            redshift_indices = np.searchsorted(
+                redshift_bins, self.features['max_mag']) - 1
+            class_indices = [target_map[i] for i in self.meta_data['target']]
+
+            for redshift_index, class_index in zip(redshift_indices,
+                                                   class_indices):
+                counts[redshift_index, class_index] += 1
+
+            weights = np.zeros(counts.shape)
+
+            for redshift_index in range(len(redshift_bins)):
+                # Calculate the weights for each redshift bin separately.
+                bin_counts = counts[redshift_index]
+                total_bin_counts = np.sum(bin_counts)
+
+                # Add a floor to the counts to prevent absurdly high weights
+                min_counts = 0.01 * total_bin_counts
+
+                bin_counts[bin_counts < min_counts] = min_counts
+
+                weights[redshift_index] = total_bin_counts / bin_counts
+
+            print(weights)
+
+            def calc_weights(mask):
+                meta_data = self.meta_data.loc[mask]
+                features = self.features.loc[mask]
+
+                # redshift_indices = np.searchsorted(
+                    # redshift_bins, meta_data['hostgal_specz']) - 1
+                redshift_indices = np.searchsorted(
+                    redshift_bins, features['max_mag']) - 1
+                class_indices = [target_map[i] for i in meta_data['target']]
+
+                return weights[redshift_indices, class_indices]
         else:
+            # Default weights
             norm_class_weights = {i: class_weights[i] * np.sum(w) / w[i] for i
                                   in w.index}
 
@@ -1271,8 +1333,13 @@ class Dataset(object):
                 eval_mask = self.meta_data['fold'].values == fold
                 train_x, train_y = features.loc[train_mask], y.loc[train_mask]
                 eval_x, eval_y = features.loc[eval_mask], y.loc[eval_mask]
-                train_weights = train_y.map(norm_class_weights)
-                eval_weights = eval_y.map(norm_class_weights)
+
+                if settings['REDSHIFT_WEIGHT']:
+                    train_weights = calc_weights(train_mask)
+                    eval_weights = calc_weights(eval_mask)
+                else:
+                    train_weights = train_y.map(norm_class_weights)
+                    eval_weights = eval_y.map(norm_class_weights)
 
                 classifier = fit_classifier(train_x, train_y, train_weights,
                                             eval_x, eval_y, eval_weights)
