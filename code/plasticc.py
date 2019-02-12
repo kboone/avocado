@@ -13,6 +13,7 @@ from scipy.optimize import minimize
 from sklearn.model_selection import StratifiedKFold
 from scipy.signal import find_peaks
 from scipy.special import erf
+from functools import partial
 import tqdm
 
 from settings import settings
@@ -748,7 +749,10 @@ class Dataset(object):
         # Add results of the GP fit to the gp_data dictionary.
         gp_data['fit_parameters'] = fit_result.x
 
-        return gp, gp_data
+        # Build a GP function that is preconditioned on the known data.
+        cond_gp = partial(gp.predict, gp_data['fluxes'])
+
+        return cond_gp, gp_data
 
     def predict_gp(self, *args, uncertainties=False, **kwargs):
         gp, gp_data = self.fit_gp(*args, **kwargs)
@@ -758,19 +762,15 @@ class Dataset(object):
         pred_times = np.arange(end_mjd - start_mjd + 1)
 
         for band in range(6):
-            pred_bands = np.ones(len(pred_times)) * band_wavelengths[band]
-            pred_x_data = np.vstack([pred_times, pred_bands]).T
-            # pred, pred_var = gp.predict(fluxes, pred_x_data, return_var=True)
-            # band_pred, pred_var = gp.predict(fluxes, pred_x_data,
-            # return_var=True)
-            # band_pred = gp.predict(fluxes, pred_x_data, return_var=False)
+            pred_wavelengths = (
+                np.ones(len(pred_times)) * band_wavelengths[band]
+            )
+            pred_x_data = np.vstack([pred_times, pred_wavelengths]).T
             if uncertainties:
-                band_pred, band_pred_var = gp.predict(
-                    gp_data['fluxes'], pred_x_data, return_var=True)
+                band_pred, band_pred_var = gp(pred_x_data, return_var=True)
                 pred_var.append(band_pred_var)
             else:
-                band_pred = gp.predict(gp_data['fluxes'], pred_x_data,
-                                       return_cov=False)
+                band_pred = gp(pred_x_data, return_cov=False)
             pred.append(band_pred)
         pred = np.array(pred)
 
@@ -835,7 +835,7 @@ class Dataset(object):
 
         interact(self.plot_gp, idx=idx_widget, target=target_widget,
                  object_meta=fixed(None), object_data=fixed(None),
-                 uncertainties=False, data_only=False)
+                 uncertainties=True, data_only=False, verbose=False)
 
     def extract_features(self, *args, **kwargs):
         """Extract features from a target"""
@@ -1039,7 +1039,8 @@ class Dataset(object):
         # rather than the table that we saved directly.
         return self.load_features()
 
-    def augment_object(self, idx=None, object_meta=None, object_data=None):
+    def augment_object(self, idx=None, object_meta=None, object_data=None,
+                       gp=None, new_ddf=None, new_redshift=None):
         """Generate an augmented version of an object for training
 
         The following forms of data augmentation are applied:
@@ -1053,6 +1054,7 @@ class Dataset(object):
             orig_object_meta = self.meta_data.iloc[idx]
             orig_object_data = self.flux_data[self.flux_data['object_id'] ==
                                               orig_object_meta['object_id']]
+            gp, gp_data = self.fit_gp(idx)
         else:
             orig_object_meta = object_meta
             orig_object_data = object_data
@@ -1060,42 +1062,55 @@ class Dataset(object):
         object_data = orig_object_data.copy()
         object_meta = orig_object_meta.copy()
 
+        if new_ddf is None:
+            # Choose whether or not to simulate the object with DDF or WFD-like
+            # conditions.
+            if len(object_data) > 200:
+                # Was originally in DDF, so can simulate with DDF-like
+                # conditions.
+                new_ddf = np.random.binomial(1, 0.2)
+            else:
+                # Wasn't originally in the DDF, so has to stay out of the DDF.
+                new_ddf = 0
+
         # Drop a block of observations corresponding to the typical width of a
         # season
-        block_start = np.random.uniform(start_mjd, end_mjd)
+        block_width = 250
+        block_start = np.random.uniform(start_mjd-block_width, end_mjd)
         block_end = block_start + 250
         block_mask = ((object_data['mjd'] < block_start) |
                       (object_data['mjd'] > block_end))
         object_data = object_data[block_mask]
 
-        # Drop random observations to get things that look like the non DDF
-        # observations that most of our objects are actually in. I estimate the
-        # distribution of number of observations in the non DDF regions with
-        # a mixture of 3 gaussian distributions.
-        num_orig = len(object_data)
-        gauss_choice = np.random.choice(3, p=[0.05, 0.4, 0.55])
-        if gauss_choice == 0:
-            mu = 95
-            sigma = 20
-        elif gauss_choice == 1:
-            mu = 115
-            sigma = 8
-        elif gauss_choice == 2:
-            mu = 138
-            sigma = 8
-        num_obs = int(np.clip(np.random.normal(mu, sigma), 50, None))
+        if not new_ddf:
+            # Drop random observations to get things that look like the non DDF
+            # observations that most of our objects are actually in. I estimate
+            # the distribution of number of observations in the non DDF regions
+            # with a mixture of 3 gaussian distributions.
+            num_orig = len(object_data)
+            gauss_choice = np.random.choice(3, p=[0.05, 0.4, 0.55])
+            if gauss_choice == 0:
+                mu = 95
+                sigma = 20
+            elif gauss_choice == 1:
+                mu = 115
+                sigma = 8
+            elif gauss_choice == 2:
+                mu = 138
+                sigma = 8
+            num_obs = int(np.clip(np.random.normal(mu, sigma), 50, None))
 
-        if num_obs > 0.9 * num_orig:
-            # Not enough original data points for the choice, drop 10% of
-            # observations randomly.
-            num_drop = int(0.1 * num_orig)
-        else:
-            num_drop = num_orig - num_obs
+            if num_obs > 0.9 * num_orig:
+                # Not enough original data points for the choice, drop 10% of
+                # observations randomly.
+                num_drop = int(0.1 * num_orig)
+            else:
+                num_drop = num_orig - num_obs
 
-        drop_indices = np.random.choice(
-            object_data.index, num_drop, replace=False
-        )
-        object_data = object_data.drop(drop_indices)
+            drop_indices = np.random.choice(
+                object_data.index, num_drop, replace=False
+            )
+            object_data = object_data.drop(drop_indices)
 
         if object_meta['hostgal_photoz'] == 0.:
             # Adjust brightness for galactic objects. Moving them by a normal
@@ -1105,30 +1120,48 @@ class Dataset(object):
             object_data['flux'] *= adjust_scale
             object_data['flux_err'] *= adjust_scale
         else:
-            # Adjust redshift for extragalactic objects. The redshift
-            # distribution is ~normal in log-space with a standard deviation of
-            # ~0.2 log10(z). There is a systematic offset of 0.2 log10(z)
-            # between the objects that have a spec-z and the ones that don't.
-            # To generate a more representative training dataset, add in this
-            # offset to the test objects along with some additional dispersion.
-            adjust_logz = np.random.normal(0.2, 0.2)
-            orig_z = object_meta['hostgal_specz']
-            new_z = orig_z * 10**adjust_logz
+            original_redshift = object_meta['hostgal_specz']
+            if new_redshift is None:
+                # Adjust redshift for extragalactic objects. The redshift
+                # distribution is ~normal in log-space with a standard
+                # deviation of ~0.2 log10(z). There is a systematic offset of
+                # 0.2 log10(z) between the objects that have a spec-z and the
+                # ones that don't. To generate a more representative training
+                # dataset, add in this offset to the test objects along with
+                # some additional dispersion.
+                if new_ddf:
+                    adjust_logz = np.random.normal(0.4, 0.1)
+                else:
+                    adjust_logz = np.random.normal(0.2, 0.1)
+                new_redshift = original_redshift * 10**adjust_logz
+
+            # Compute the reference fluxes at the adjusted wavelengths
+            target_wavelengths = np.array([band_wavelengths[i] for i in
+                                           object_data['passband']])
+            eval_wavelengths = (target_wavelengths * (1 + original_redshift) /
+                                (1 + new_redshift))
+            pred_x_data = np.vstack([object_data['mjd'] - start_mjd,
+                                     eval_wavelengths]).T
+            ref_fluxes = gp(pred_x_data, return_cov=False)
 
             # Adjust distance modulus
-            delta_distmod = (cosmo.distmod(orig_z) -
-                             cosmo.distmod(new_z)).value
+            delta_distmod = (cosmo.distmod(original_redshift) -
+                             cosmo.distmod(new_redshift)).value
             adjust_scale = 10**(0.4*delta_distmod)
-            object_data['flux'] *= adjust_scale
+            object_data['flux'] = ref_fluxes * adjust_scale
             object_data['flux_err'] *= adjust_scale
 
             # Adjust times to account for time dilation.
-            ref_mjd = (
-                (start_mjd + end_mjd) / 2. + np.random.uniform(-100, 100)
+            orig_ref_mjd = (
+                orig_object_data['mjd'][np.argmax(orig_object_data['flux'])]
+            )
+            new_ref_mjd = (
+                np.random.uniform(start_mjd, end_mjd)
             )
             new_mjd = (
-                ref_mjd +
-                (object_data['mjd'] - ref_mjd) * (1 + new_z) / (1 + orig_z)
+                new_ref_mjd +
+                (object_data['mjd'] - orig_ref_mjd) * (1 + new_redshift) /
+                (1 + original_redshift)
             )
             object_data['mjd'] = new_mjd
 
@@ -1166,29 +1199,39 @@ class Dataset(object):
                     photoz_err = np.random.normal(2.5, 0.2)
 
                 if gauss_choice != 3:
-                    new_photoz = new_z + photoz_err
+                    new_photoz = new_redshift + photoz_err
                 else:
                     # Catastrophic failure, just get z=2.5 regardless of the
                     # true redshift.
                     new_photoz = photoz_err
 
-            object_meta['hostgal_specz'] = new_z
+            object_meta['hostgal_specz'] = new_redshift
             object_meta['hostgal_photoz'] = new_photoz
             object_meta['hostgal_photoz_err'] = photoz_std
             object_meta['distmod'] = cosmo.distmod(new_photoz).value
 
         # Add noise to match what we see in the real data. Each band has a
-        # different noise level. I use the same value for everywhere, so don't
-        # use any features directly related to the noise or you could end up
-        # just finding the training data.
-        band_noises = {
-            0: 10,
-            1: 2.5,
-            2: 3.6,
-            3: 6.1,
-            4: 13.1,
-            5: 29,
-        }
+        # different noise level. I use the same value for every observation, so
+        # be careful with features directly related to the noise or you could end
+        # up overfitting the training data.
+        if new_ddf:
+            band_noises = {
+                0: 1.9,
+                1: 1.13,
+                2: 1.11,
+                3: 1.68,
+                4: 2.40,
+                5: 5.71,
+            }
+        else:
+            band_noises = {
+                0: 10,
+                1: 2.5,
+                2: 3.6,
+                3: 6.1,
+                4: 13.1,
+                5: 29,
+            }
         add_stds = np.array([band_noises[i] for i in object_data['passband']])
         noise_add = np.random.normal(loc=0.0, scale=add_stds)
         object_data['flux'] += noise_add
@@ -1214,13 +1257,114 @@ class Dataset(object):
         object_data['object_id'] = new_object_id
         object_meta['object_id'] = new_object_id
 
-        # No longer in DDF if we have augmented the object.
-        object_meta['ddf'] = 0.
+        object_meta['ddf'] = new_ddf
 
         return object_meta, object_data
 
-    def augment_dataset(self, num_augments=1):
+    def augment_dataset(self, test_dataset, num_augments=100000):
         """Augment the dataset for training.
+
+        This augmenting method uses the test dataset as a reference, and
+        attempts to match the training dataset to the test dataset.
+
+        We assign the k-folding labels before augmenting to avoid biasing the
+        cross-validation.
+        """
+        all_aug_meta = []
+        all_aug_data = []
+
+        # Fit GPs to all data in the training set.
+        template_metas = []
+        template_datas = []
+        template_gps = []
+        print("Fitting GPs")
+        # for idx in tqdm.tqdm(range(len(self.meta_data))):
+        for idx in tqdm.tqdm(range(len(self.meta_data))):
+            object_meta = self.meta_data.iloc[idx]
+            object_data = self.flux_data[self.flux_data['object_id'] ==
+                                         object_meta['object_id']]
+            gp, gp_data = self.fit_gp(idx)
+
+            template_metas.append(object_meta)
+            template_datas.append(object_data)
+            template_gps.append(gp)
+
+            # Keep the original training data
+            all_aug_meta.append(object_meta)
+            all_aug_data.append(object_data)
+
+        # Generate an augmented training set that is representative of the test
+        # set
+        print("Generating augmented training set")
+        for idx in tqdm.tqdm(range(num_augments)):
+            # Choose random element of the test set to use as a reference.
+            target_id = np.random.randint(0, len(test_dataset.meta_data))
+            target_meta = test_dataset.meta_data.iloc[target_id]
+
+            # Generate variants on the training data that are more
+            # representative of the test data
+            attempts = 0
+            while True:
+                attempts += 1
+                if attempts % 1000 == 0:
+                    print("WARNING: %d attempts for z=%.3f, ddf=%s" %
+                          (attempts, target_meta['hostgal_photoz'],
+                           target_meta['ddf']))
+
+                # Choose a random element of the training set to use as the
+                # template.
+                template_id = np.random.randint(0, len(template_metas))
+                template_meta = template_metas[template_id]
+
+                # Ensure that this is a valid match:
+                if ((target_meta['hostgal_photoz'] > 0) !=
+                        (template_meta['hostgal_photoz'] > 0)):
+                    # Require galactic/extragalactic match.
+                    continue
+
+                if (target_meta['ddf'] and not template_meta['ddf']):
+                    continue
+
+                aug_meta, aug_data = self.augment_object(
+                    object_meta=template_metas[template_id],
+                    object_data=template_datas[template_id],
+                    gp=template_gps[template_id],
+                    new_ddf=target_meta['ddf'],
+                    new_redshift=target_meta['hostgal_photoz'])
+
+                # Ensure that the generated object would be detected.
+                if np.sum(aug_data['detected']) < 2:
+                    continue
+
+                # Save it and move on to the next one.
+                all_aug_meta.append(aug_meta)
+                all_aug_data.append(aug_data)
+                break
+
+        all_aug_meta = pd.DataFrame(all_aug_meta)
+        all_aug_data = pd.concat(all_aug_data)
+
+        new_dataset = Dataset()
+
+        new_dataset.flux_data = all_aug_data
+        new_dataset.meta_data = all_aug_meta
+        new_dataset.dataset_name = '%s_augment_v%d_%d' % (
+            self.dataset_name, self._augment_version, num_augments)
+
+        # Save the results of the augmentation
+        output_path = '%s/%s.h5' % (settings['AUGMENT_DIR'],
+                                    new_dataset.dataset_name)
+
+        new_dataset.meta_data.to_hdf(output_path, key='meta', mode='w')
+        new_dataset.flux_data.to_hdf(output_path, key='df')
+
+        return new_dataset
+
+    def augment_dataset_old(self, num_augments=1):
+        """Augment the dataset for training.
+
+        OLD CODE: use augment_dataset which tries to properly match the
+        redshift distribution of the test set.
 
         We need to do k-folding before augmenting or we'll bias the
         cross-validation.
@@ -1229,19 +1373,20 @@ class Dataset(object):
         all_aug_data = []
 
         for idx in tqdm.tqdm(range(len(self.meta_data))):
-            # Keep the real training data
             object_meta = self.meta_data.iloc[idx]
             object_data = self.flux_data[self.flux_data['object_id'] ==
                                          object_meta['object_id']]
+            # Keep the original training data
             all_aug_meta.append(object_meta)
             all_aug_data.append(object_data)
 
             # Generate variants on the training data that are more
             # representative of the test data
+            gp, gp_data = self.fit_gp(idx)
             for aug_idx in range(num_augments - 1):
                 for attempt in range(5):
                     aug_meta, aug_data = self.augment_object(
-                        object_meta=object_meta, object_data=object_data
+                        object_meta=object_meta, object_data=object_data, gp=gp
                     )
                     if np.sum(aug_data['detected']) < 2:
                         # Not detected
@@ -1317,7 +1462,7 @@ class Dataset(object):
 
                 weights[redshift_index] = total_bin_counts / bin_counts
 
-            print(weights)
+            # print(weights)
 
             def calc_weights(mask):
                 meta_data = self.meta_data.loc[mask]

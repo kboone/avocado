@@ -3,4 +3,6 @@
 *.zip
 *.pkl
 *.npz
+*.out
+*.err
 __pycache__
