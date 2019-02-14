@@ -18,8 +18,8 @@
 
     "AUGMENT_DIR": "./augment",
     "AUGMENT_PATH_FORMAT": "./augment/%s.h5",
-    "NUM_AUGMENTS": 100000,
-    "AUGMENT_VERSION": 6,
+    "NUM_AUGMENTS": 250000,
+    "AUGMENT_VERSION": 8,
 
     "MODEL_DIR": "./model",
     "MODEL_PATH_FORMAT": "./model/model_%d.pkl",
