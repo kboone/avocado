@@ -441,10 +441,10 @@ class Dataset(object):
 
         rf = self.raw_features
 
-        # If desired, undo the photoz
         max_flux = rf['max_flux_3'] - rf['min_flux_3']
         max_mag = -2.5*np.log10(np.abs(max_flux))
 
+        # If desired, undo the photoz
         if apply_photoz:
             distmod = rf['distmod']
             photoz = rf['hostgal_photoz']
@@ -1244,11 +1244,12 @@ class Dataset(object):
                 # We can be pickier on the minimum end because the training set
                 # is a lot bluer than the test set. Filters also shift out
                 # faster when you make a spectrum bluer compared to making it
-                # redder.
+                # redder. We avoid making things brighter wherever possible
+                # because then the models can go crazy.
                 redshift_ratio = ((1 + target_meta['hostgal_photoz']) /
                                   (1 + template_meta['hostgal_photoz']))
                 max_redshift_ratio = 1.5
-                min_redshift_ratio = 0.95
+                min_redshift_ratio = 0.99
                 if (redshift_ratio > max_redshift_ratio
                         or redshift_ratio < min_redshift_ratio):
                     continue
@@ -1688,6 +1689,12 @@ def _resample_lightcurve(object_data, gp, new_ddf, original_redshift,
     object_data = object_data[(object_data['mjd'] > start_mjd).values &
                               (object_data['mjd'] < end_mjd).values].copy()
 
+    # Drop 10% of observations randomly.
+    drop_indices = np.random.choice(
+        object_data.index, int(0.1*len(object_data)), replace=False
+    )
+    object_data = object_data.drop(drop_indices)
+
     # Figure out how to get the target number of observations. If there were
     # too many in the original data, we drop observations to get down to how
     # many we want. If there were too few, we fill in observations near to
@@ -1712,11 +1719,15 @@ def _resample_lightcurve(object_data, gp, new_ddf, original_redshift,
                                        replace=True)
         new_rows = object_data.loc[new_indices]
 
-        # Tweak the MJDs of the new rows
-        tweak_scale = 4
-        mjd_tweaks = np.random.uniform(-tweak_scale, tweak_scale, num_add)
-        new_rows['mjd'] += mjd_tweaks
-        new_rows['ref_mjd'] += mjd_tweaks
+        # Tweak the MJDs of the new rows slightly.
+        # WARNING: This causes issues when the GP has very short length scales,
+        # and probably doesn't make a difference. I'm not doing this for now,
+        # which will lead to weird looking pileups of observations for some
+        # lightcurves, but should be fine for the features that I compute.
+        # tweak_scale = 4
+        # mjd_tweaks = np.random.uniform(-tweak_scale, tweak_scale, num_add)
+        # new_rows['mjd'] += mjd_tweaks
+        # new_rows['ref_mjd'] += mjd_tweaks
 
         # Choose bands randomly
         new_bands = np.random.randint(0, num_passbands, num_add)
@@ -1737,9 +1748,11 @@ def _resample_lightcurve(object_data, gp, new_ddf, original_redshift,
 
     # Update the brightness of the new observations.
     if original_redshift == 0:
-        # Adjust brightness for galactic objects. Moving them by a normal
-        # distribution with a width of 0.5 mags seems to be reasonable.
-        adjust_mag = np.random.normal(0, 0.5)
+        # Adjust brightness for galactic objects. We only want to make things
+        # fainter to avoid issues when the GP is untrustworthy and the errors
+        # blow up when things get brighter.
+        # adjust_mag = np.random.normal(0, 0.5)
+        adjust_mag = np.random.lognormal(-1, 0.5)
         adjust_scale = 10**(-0.4*adjust_mag)
     else:
         # Adjust brightness for extragalactic objects. We simply follow the
@@ -1853,6 +1866,11 @@ def _simulate_photoz(object_meta):
     """
     # Make a copy of the object metadata so that we don't affect the input.
     object_meta = object_meta.copy()
+
+    if object_meta['hostgal_specz'] == 0:
+        # Galactic object. For the PLAsTiCC challenge, the reshift is always 0.
+        # Leave things as is.
+        return object_meta
 
     new_photoz = -1
     while new_photoz < 0:
