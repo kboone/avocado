@@ -1,4 +1,4 @@
-from collections import OrderedDict
+from collections import OrderedDict, defaultdict
 import george
 from george import kernels
 import lightgbm as lgb
@@ -441,7 +441,8 @@ class Dataset(object):
 
         rf = self.raw_features
 
-        max_flux = rf['max_flux_3'] - rf['min_flux_3']
+        # max_flux = rf['max_flux_3'] - rf['min_flux_3']
+        max_flux = np.clip(rf['max_flux_3'], 0.001, None)
         max_mag = -2.5*np.log10(np.abs(max_flux))
 
         # If desired, undo the photoz
@@ -617,7 +618,7 @@ class Dataset(object):
 
         self.features = features
 
-    def _get_gp_data(self, object_meta, object_data, subtract_median=True):
+    def _get_gp_data(self, object_meta, object_data, fix_background=True):
         times = []
         fluxes = []
         bands = []
@@ -632,6 +633,13 @@ class Dataset(object):
         # noise get really messed up. Revert back to the median for now and see
         # if that helps. It doesn't really matter if supernovae go slightly
         # negative...
+        # UPDATE 2: most of the objects of interest are short-lived in time.
+        # The only issue with the background occurs when there was flux from
+        # the transient in the reference image. To deal with this, look at the
+        # last observations and see if they are negative (indicating that the
+        # reference has additional flux in it). If so, then update the
+        # background level. Otherwise, leave the background at the reference
+        # level.
         for passband in range(num_passbands):
             band_data = object_data[object_data['passband'] == passband]
             if len(band_data) == 0:
@@ -639,12 +647,18 @@ class Dataset(object):
                 continue
 
             # ref_flux = np.percentile(band_data['flux'], 20)
-            ref_flux = np.median(band_data['flux'])
+            # ref_flux = np.median(band_data['flux'])
+
+            # Determine the reference flux level for this band from the final
+            # observations.
+            ref_count = 7
+            ref_indices = np.argsort(band_data['mjd'])[-ref_count:]
+            ref_flux = min(0, np.median(band_data['flux'].iloc[ref_indices]))
 
             for idx, row in band_data.iterrows():
                 times.append(row['mjd'] - start_mjd)
                 flux = row['flux']
-                if subtract_median:
+                if fix_background:
                     flux = flux - ref_flux
                 bands.append(passband)
                 wavelengths.append(band_wavelengths[passband])
@@ -675,9 +689,13 @@ class Dataset(object):
 
         return gp_data
 
-    def get_gp_data(self, idx, target=None, verbose=False,
-                    subtract_median=True):
-        if target is not None:
+    def get_gp_data(self, idx=None, target=None, object_id=None, verbose=False,
+                    fix_background=True):
+        if object_id is not None:
+            # Get the object id directly
+            object_meta = self.meta_data[self.meta_data['object_id'] ==
+                                         object_id].iloc[0]
+        elif target is not None:
             target_data = self.meta_data[self.meta_data['target'] == target]
             object_meta = target_data.iloc[idx]
         else:
@@ -689,16 +707,19 @@ class Dataset(object):
         object_id = object_meta['object_id']
         object_data = self.flux_data[self.flux_data['object_id'] == object_id]
 
-        return self._get_gp_data(object_meta, object_data)
+        return self._get_gp_data(object_meta, object_data, fix_background)
 
-    def fit_gp(self, idx=None, target=None, object_meta=None, object_data=None,
-               verbose=False, guess_length_scale=20., fix_scale=False):
-        if idx is not None:
-            # idx was specified, pull from the internal data
-            gp_data = self.get_gp_data(idx, target, verbose)
+    def fit_gp(self, idx=None, target=None, object_id=None, object_meta=None,
+               object_data=None, verbose=False, guess_length_scale=20.,
+               fix_scale=False, fix_background=True):
+        if idx is not None or object_id is not None:
+            # idx or object_id was specified, pull from the internal data
+            gp_data = self.get_gp_data(idx, target, object_id, verbose,
+                                       fix_background)
         else:
             # The meta data and flux data can also be directly specified.
-            gp_data = self._get_gp_data(object_meta, object_data)
+            gp_data = self._get_gp_data(object_meta, object_data,
+                                        fix_background)
 
         # GP kernel. We use a 2-dimensional Matern kernel to model the
         # transient. The kernel amplitude is fixed to a fraction of the maximum
@@ -851,7 +872,8 @@ class Dataset(object):
 
         interact(self.plot_gp, idx=idx_widget, target=target_widget,
                  object_meta=fixed(None), object_data=fixed(None),
-                 uncertainties=True, data_only=False, verbose=False)
+                 uncertainties=True, data_only=False, verbose=False,
+                 fix_background=True)
 
     def extract_features(self, *args, **kwargs):
         """Extract features from a target"""
@@ -1184,8 +1206,9 @@ class Dataset(object):
         template_datas = []
         template_gps = []
         print("Fitting GPs")
-        # for idx in tqdm.tqdm(range(len(self.meta_data))):
         for idx in tqdm.tqdm(range(len(self.meta_data))):
+        # print("HACK: ONLY USING 500 OBJECTS FOR TESTING PURPOSES")
+        # for idx in tqdm.tqdm(range(500)):
             object_meta = self.meta_data.iloc[idx]
             object_data = self.flux_data[self.flux_data['object_id'] ==
                                          object_meta['object_id']]
@@ -1198,6 +1221,21 @@ class Dataset(object):
             # Keep the original training data
             all_aug_meta.append(object_meta)
             all_aug_data.append(object_data)
+
+        # Use weights when selecting from the training set to build a less
+        # unbalanced test set.
+        counts = defaultdict(int)
+        for meta in template_metas:
+            counts[meta['target']] += 1
+        ratios = {i: len(template_metas) / j for i, j in counts.items()}
+        template_weights = np.array([ratios[i['target']] for i in
+                                     template_metas])
+        template_weights /= np.sum(template_weights)
+
+        template_redshifts = np.array([i['hostgal_specz'] for i in
+                                       template_metas])
+        template_galactic = template_redshifts == 0
+        template_ddf = np.array([i['ddf'] > 0 for i in template_metas])
 
         # Generate an augmented training set that is representative of the test
         # set
@@ -1219,6 +1257,36 @@ class Dataset(object):
                     if np.random.rand() < 0.1:
                         break
 
+            # Build a mask of valid templates to use as a reference for this
+            # target.
+
+            # Can't interpolate too far in wavelength or things break.
+            # We can be pickier on the minimum end because the training set
+            # is a lot bluer than the test set. Filters also shift out
+            # faster when you make a spectrum bluer compared to making it
+            # redder. We avoid making things brighter wherever possible
+            # because then the models can go crazy.
+            redshift_ratio = ((1 + target_meta['hostgal_photoz']) /
+                              (1 + template_redshifts))
+            max_redshift_ratio = 1.5
+            min_redshift_ratio = 0.8
+            mask = ((redshift_ratio > min_redshift_ratio)
+                    & (redshift_ratio < max_redshift_ratio))
+
+            # Require galactic/extragalactic match.
+            if target_meta['hostgal_photoz'] == 0:
+                mask &= template_galactic
+            else:
+                mask &= ~template_galactic
+
+            # Require a DDF template for DDF targets
+            if target_meta['ddf']:
+                mask &= template_ddf
+
+            use_templates = np.where(mask)[0]
+            use_weights = template_weights[mask]
+            use_weights = use_weights / np.sum(use_weights)
+
             # Generate variants on the training data that are more
             # representative of the test data
             attempts = 0
@@ -1228,34 +1296,9 @@ class Dataset(object):
                     print("WARNING: %d attempts for z=%.3f, ddf=%s" %
                           (attempts, target_meta['hostgal_photoz'],
                            target_meta['ddf']))
-
                 # Choose a random element of the training set to use as the
                 # template.
-                template_id = np.random.randint(0, len(template_metas))
-                template_meta = template_metas[template_id]
-
-                # Ensure that this is a valid match:
-                if ((target_meta['hostgal_photoz'] > 0)
-                        != (template_meta['hostgal_photoz'] > 0)):
-                    # Require galactic/extragalactic match.
-                    continue
-
-                # Can't interpolate too far in wavelength or things break.
-                # We can be pickier on the minimum end because the training set
-                # is a lot bluer than the test set. Filters also shift out
-                # faster when you make a spectrum bluer compared to making it
-                # redder. We avoid making things brighter wherever possible
-                # because then the models can go crazy.
-                redshift_ratio = ((1 + target_meta['hostgal_photoz']) /
-                                  (1 + template_meta['hostgal_photoz']))
-                max_redshift_ratio = 1.5
-                min_redshift_ratio = 0.99
-                if (redshift_ratio > max_redshift_ratio
-                        or redshift_ratio < min_redshift_ratio):
-                    continue
-
-                if (target_meta['ddf'] and not template_meta['ddf']):
-                    continue
+                template_id = np.random.choice(use_templates, p=use_weights)
 
                 aug_meta, aug_data = self.augment_object(
                     object_meta=template_metas[template_id],
@@ -1663,7 +1706,7 @@ def _resample_lightcurve(object_data, gp, new_ddf, original_redshift,
             np.argmax(object_data['flux'].values)])
 
         # Shift the new reference point slightly.
-        new_ref_mjd = orig_ref_mjd + np.random.uniform(-200, 200)
+        new_ref_mjd = orig_ref_mjd + np.random.uniform(-50, 50)
 
         new_mjd = (
             new_ref_mjd +
@@ -1673,7 +1716,7 @@ def _resample_lightcurve(object_data, gp, new_ddf, original_redshift,
         object_data['mjd'] = new_mjd
     else:
         # For galactic objects, add a small shift to the observation times.
-        object_data['mjd'] += np.random.uniform(-200, 200)
+        object_data['mjd'] += np.random.uniform(-50, 50)
 
     # Drop a block of observations corresponding to the typical width of a
     # season to create lightcurves with large missing chunks.
@@ -1685,55 +1728,50 @@ def _resample_lightcurve(object_data, gp, new_ddf, original_redshift,
     object_data = object_data[block_mask].copy()
 
     # Drop observations that are outside of the observing window after all of
-    # these procedures.
-    object_data = object_data[(object_data['mjd'] > start_mjd).values &
-                              (object_data['mjd'] < end_mjd).values].copy()
+    # these procedures. We leave a bit of a buffer to get better baselines for
+    # background estimation.
+    object_data = object_data[
+        (object_data['mjd'] > start_mjd - pad).values &
+        (object_data['mjd'] < end_mjd + pad).values
+    ].copy()
 
-    # Drop 10% of observations randomly.
-    drop_indices = np.random.choice(
-        object_data.index, int(0.1*len(object_data)), replace=False
-    )
-    object_data = object_data.drop(drop_indices)
-
-    # Figure out how to get the target number of observations. If there were
-    # too many in the original data, we drop observations to get down to how
-    # many we want. If there were too few, we fill in observations near to
-    # where there were previously observations. We need to be careful here and
-    # avoid making measurements far from where there was data originally
-    # (because the uncertainty of the GP will add unphysical measurements into
-    # the dataset). However, we also need to fill in the data to maintain the
-    # same density of observations at each redshift. Add/drop observations near
-    # where the previous observations were in time.
-    if len(object_data) > num_observations:
-        # Have more observations than we want. Drop observations to get to
-        # where we want.
-        num_drop = len(object_data) - num_observations
-        drop_indices = np.random.choice(
-            object_data.index, num_drop, replace=False
-        )
-        object_data = object_data.drop(drop_indices).copy()
-    elif len(object_data) < num_observations:
-        # Have fewer observations than we want. Fill in the lightcurve.
-        num_add = num_observations - len(object_data)
-        new_indices = np.random.choice(object_data.index, num_add,
+    # At high redshifts, we need to fill in the lightcurve to account for the
+    # fact that there is a lower observation density compared to lower
+    # redshifts.
+    num_fill = int(num_observations * (
+        (1 + new_redshift) / (1 + original_redshift) - 1))
+    if num_fill > 0:
+        new_indices = np.random.choice(object_data.index, num_fill,
                                        replace=True)
         new_rows = object_data.loc[new_indices]
 
         # Tweak the MJDs of the new rows slightly.
-        # WARNING: This causes issues when the GP has very short length scales,
-        # and probably doesn't make a difference. I'm not doing this for now,
-        # which will lead to weird looking pileups of observations for some
-        # lightcurves, but should be fine for the features that I compute.
-        # tweak_scale = 4
-        # mjd_tweaks = np.random.uniform(-tweak_scale, tweak_scale, num_add)
-        # new_rows['mjd'] += mjd_tweaks
+        # UPDATE: Don't do this. Tweaking the MJDs just gives the GP the
+        # potential to do bad things, especially for short timescale targets
+        # like kilonovae. All that we really care about is getting the correct
+        # signal-to-noise for each bin.
+        # tweak_scale = 2
+        # mjd_tweaks = np.random.uniform(-tweak_scale, tweak_scale, num_fill)
+        # new_rows['mjd'] += mjd_tweaks BUG: ADD IN REDSHIFT HERE!!!
         # new_rows['ref_mjd'] += mjd_tweaks
 
-        # Choose bands randomly
-        new_bands = np.random.randint(0, num_passbands, num_add)
-        new_rows['passband'] = new_bands
+        # Choose bands randomly. We only move by a max of one band to avoid
+        # breaking things.
+        band_offsets = np.random.randint(-1, 2, num_fill)
+        new_rows['passband'] = np.clip(new_rows['passband'] + band_offsets, 0,
+                                       num_passbands-1)
 
         object_data = pd.concat([object_data, new_rows])
+
+    # Drop back down to the target number of observations. Having too few
+    # observations is fine, but having too many is not. We always drop at least
+    # 10% of observations to get some shakeup of the lightcurve.
+    num_drop = int(max(len(object_data) - num_observations,
+                       0.1*num_observations))
+    drop_indices = np.random.choice(
+        object_data.index, num_drop, replace=False
+    )
+    object_data = object_data.drop(drop_indices).copy()
 
     # Compute the fluxes from the GP at the new observation points.
     new_wavelengths = np.array([band_wavelengths[int(i)] for i in
@@ -1742,17 +1780,31 @@ def _resample_lightcurve(object_data, gp, new_ddf, original_redshift,
                         (1 + new_redshift))
     pred_x_data = np.vstack([object_data['ref_mjd'] - start_mjd,
                              eval_wavelengths]).T
-    new_fluxes = gp(pred_x_data, return_cov=False)
+    new_fluxes, new_fluxvars = gp(pred_x_data, return_var=True)
+
+    # Set a floor on the error at the signal-to-noise of the reference
+    # observations. This helps avoid creating significant negative fluxes for
+    # brighter observations due to modeling errors which deteriorate the
+    # classifier performance.
+    # UPDATE: Shouldn't be necessary with the GP error. I wasn't propagating
+    # that properly before, but it should be fixed now.
+    # ref_s2n = object_data['flux'] / object_data['flux_err']
+    # ref_err = new_fluxes / ref_s2n
 
     object_data['flux'] = new_fluxes
+    # object_data['flux_err'] = np.min([ref_err, np.sqrt(new_fluxvars)], axis=0)
+    object_data['flux_err'] = np.sqrt(new_fluxvars)
 
     # Update the brightness of the new observations.
     if original_redshift == 0:
+        # UPDATE: I changed the error calculation to set a floor on the noise
+        # at the level of the input. A normal distribution should be fine now
+        # since everything should still be fine for brighter objects.
         # Adjust brightness for galactic objects. We only want to make things
         # fainter to avoid issues when the GP is untrustworthy and the errors
         # blow up when things get brighter.
-        # adjust_mag = np.random.normal(0, 0.5)
-        adjust_mag = np.random.lognormal(-1, 0.5)
+        adjust_mag = np.random.normal(0, 0.5)
+        # adjust_mag = np.random.lognormal(-1, 0.5)
         adjust_scale = 10**(-0.4*adjust_mag)
     else:
         # Adjust brightness for extragalactic objects. We simply follow the
@@ -1764,8 +1816,7 @@ def _resample_lightcurve(object_data, gp, new_ddf, original_redshift,
     object_data['flux'] *= adjust_scale
 
     # We have the resampled models! Note that there is no error added in yet,
-    # so we set the error and detected flags to default values and clean up.
-    object_data['flux_err'] = 0
+    # so we set the detected flags to default values and clean up.
     object_data['detected'] = 1
     object_data.reset_index(inplace=True, drop=True)
 
@@ -1834,7 +1885,7 @@ def _simulate_lightcurve_noise(object_data, ddf):
 
     noise_add = np.random.normal(loc=0.0, scale=add_stds)
     object_data['flux'] += noise_add
-    object_data['flux_err'] = np.sqrt(add_stds**2)
+    object_data['flux_err'] = np.sqrt(object_data['flux_err']**2 + add_stds**2)
 
     # The 'detected' threshold doesn't seem to be a simple function of
     # signal-to-noise. For now, I model it with an error function on
