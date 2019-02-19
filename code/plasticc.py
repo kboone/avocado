@@ -6,6 +6,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import pickle
+import sys
 from astropy.table import Table
 from astropy.cosmology import FlatLambdaCDM
 from scipy.optimize import minimize
@@ -332,6 +333,7 @@ class Dataset(object):
         self.flux_data = None
         self.meta_data = None
         self.features = None
+        self.gp_fits = None
         self.dataset_name = None
 
         # Update this whenever the feature calculation code is updated.
@@ -381,29 +383,27 @@ class Dataset(object):
 
         self.dataset_name = 'test_%04d' % chunk_idx
 
-    def load_augment(self, num_augments, base_name='train',
-                     relabel_folds=False):
+    def load_augment(self, num_augments=None, base_name='train', chunk=None,
+                     merge=False):
         """Load an augmented dataset."""
-        dataset_name = '%s_augment_v%d_%d' % (
-            base_name, self._augment_version, num_augments
-        )
+        if num_augments is None:
+            num_augments = settings['NUM_AUGMENTS']
+
+        if merge:
+            dataset_name = '%s_augment_v%d_%d_merge' % (
+                base_name, self._augment_version, num_augments)
+        elif chunk is not None:
+            dataset_name = '%s_augment_v%d_%d_%03d' % (
+                base_name, self._augment_version, num_augments, chunk)
+        else:
+            dataset_name = '%s_augment_v%d_%d' % (
+                base_name, self._augment_version, num_augments)
         path = '%s/%s.h5' % (settings['AUGMENT_DIR'], dataset_name)
 
         self.flux_data = pd.read_hdf(path, 'df')
         self.meta_data = pd.read_hdf(path, 'meta')
 
         self.dataset_name = dataset_name
-
-        if relabel_folds:
-            # Relabel the cross-validation folds, mixing the augments from the
-            # same object across multiple folds. This could be a bit
-            # dangerous...
-            y = self.meta_data['target']
-            folds = StratifiedKFold(n_splits=5, shuffle=True, random_state=1)
-            kfold_indices = -1*np.ones(len(y))
-            for idx, (fold_train, fold_val) in enumerate(folds.split(y, y)):
-                kfold_indices[fold_val] = idx
-            self.meta_data['fold'] = kfold_indices
 
     def load_unblind_meta(self):
         """Load the unblinded meta data."""
@@ -434,12 +434,25 @@ class Dataset(object):
             suffixes=('', '_prediction'),
         )
 
+    def load_gp_fits(self):
+        """Load all of the Gaussian process fits for a dataset"""
+        with open(self.gp_fits_path, 'rb') as fin:
+            gp_fits = pickle.load(fin)
+        self.gp_fits = gp_fits
+
     @property
     def features_path(self):
         """Path to the features file for this dataset"""
         features_path = settings['FEATURES_PATH_FORMAT'] % (
             self._features_version, self.dataset_name)
         return features_path
+
+    @property
+    def gp_fits_path(self):
+        """Path to the Gaussian process fits file for this dataset"""
+        gp_path = settings['GP_FITS_PATH_FORMAT'] % (
+            self._features_version, self.dataset_name)
+        return gp_path
 
     @property
     def salt_fits_path(self):
@@ -806,6 +819,24 @@ class Dataset(object):
         cond_gp = partial(gp.predict, gp_data['fluxes'])
 
         return cond_gp, gp_data
+
+    def fit_all_gps(self):
+        """Do Gaussian process fits for all objects in the dataset and save
+        them to a file.
+        """
+        # Do all of the GP fits
+        gp_fits = []
+        print("Fitting all GPs")
+        sys.stdout.flush()
+        for i in tqdm.tqdm(range(len(self.meta_data))):
+            gp, gp_data = self.fit_gp(i)
+            gp_fits.append(gp)
+
+        # Save them to disk
+        with open(self.gp_fits_path, 'wb') as fout:
+            pickle.dump(gp_fits, fout)
+
+        self.gp_fits = gp_fits
 
     def predict_gp(self, *args, uncertainties=False, **kwargs):
         gp, gp_data = self.fit_gp(*args, **kwargs)
@@ -1205,7 +1236,192 @@ class Dataset(object):
         else:
             return object_meta, object_data
 
-    def augment_dataset(self, test_dataset, num_augments=100000):
+    def augment_dataset(self, num_augments=100000, chunk=None):
+        """Augment the dataset for training.
+
+        This augmenting method attempts to produce an even distribution of each
+        class at every redshift. This is accomplished by picking a random
+        redshift, and then simulating one object of each target at that
+        redshift. After simulating objects using this method, you shouldn't
+        divide by the class counts because they will already be baked in.
+
+        We assign the k-folding labels before augmenting to avoid biasing the
+        cross-validation.
+        """
+        all_aug_meta = []
+        all_aug_data = []
+
+        template_metas = []
+        template_datas = []
+        template_gps = []
+        template_redshifts = []
+        template_ddfs = []
+
+        # Load the GP fits, or create them if they aren't available.
+        print("Loading the GP fits...")
+        try:
+            self.load_gp_fits()
+        except FileNotFoundError:
+            raise PlasticcException("Previous GP fits not found! Create them "
+                                    "by running Dataset.fit_all_gps before "
+                                    "augmenting.")
+
+        print("Preprocessing the original dataset...")
+        for target in classes[:-1]:
+            all_target_metas = self.meta_data[self.meta_data['target'] ==
+                                              target]
+            target_metas = []
+            target_datas = []
+            target_gps = []
+            target_redshifts = []
+            target_ddfs = []
+
+            for idx in range(len(all_target_metas)):
+                object_meta = all_target_metas.iloc[idx]
+                object_data = self.flux_data[self.flux_data['object_id'] ==
+                                             object_meta['object_id']]
+                gp = self.gp_fits[idx]
+
+                target_metas.append(object_meta)
+                target_datas.append(object_data)
+                target_gps.append(gp)
+                target_redshifts.append(object_meta['hostgal_specz'])
+                target_ddfs.append(object_meta['ddf'] > 0)
+
+            template_metas.append(target_metas)
+            template_datas.append(target_datas)
+            template_gps.append(target_gps)
+            template_redshifts.append(np.array(target_redshifts))
+            template_ddfs.append(np.array(target_ddfs))
+
+        print("Augmenting the dataset...")
+        sys.stdout.flush()
+        for idx in tqdm.tqdm(range(num_augments)):
+            # Choose whether to simulate a galactic object or not. I simulate a
+            # higher fraction of galactic objects than in the test set (12%
+            # there), but note that the galactic and extragalactic
+            # classifications happen completely independently so this number
+            # won't affect the classification in any meaningful way.
+            galactic = np.random.rand() < 0.2
+
+            # Choose whether to simulate a DDF object or not. These DDF
+            # fractions are larger than in the test set (0.06% and 1%), but we
+            # want to have a sizeable sample as a reference.
+            if galactic:
+                ddf_frac = 0.01
+            else:
+                ddf_frac = 0.1
+            ddf = np.random.rand() < ddf_frac
+
+            # Choose the redshift to be at. Getting the distribution here right
+            # isn't that important because each redshift is effectively fit
+            # independently by the classifier since we have photo-zs. I choose
+            # to sample from exponential distributions whose means match the
+            # mean redshifts of the WFD and DDF samples.
+            if galactic:
+                redshift = 0
+            elif ddf:
+                redshift = np.random.exponential(0.8)
+            else:
+                redshift = np.random.exponential(0.5)
+
+            # For each target type, simulate an object at this redshift.
+            for i in range(len(template_metas)):
+                target = classes[i]
+
+                if galactic != class_galactic[target]:
+                    # Can't cross galactic/extragalactic boundaries.
+                    continue
+
+                target_metas = template_metas[i]
+                target_datas = template_datas[i]
+                target_gps = template_gps[i]
+                target_redshifts = template_redshifts[i]
+                target_ddfs = template_ddfs[i]
+
+                # Build a mask of valid templates to use as a reference for
+                # this target.
+
+                # Can't interpolate too far in wavelength or things break. We
+                # can be pickier on the minimum end because the training set is
+                # a lot bluer than the test set. Filters also shift out faster
+                # when you make a spectrum bluer compared to making it redder.
+                # We avoid making things brighter wherever possible because
+                # then the models can go crazy.
+                redshift_ratio = ((1 + redshift) / (1 + target_redshifts))
+                max_redshift_ratio = 1.5
+                min_redshift_ratio = 0.8
+                mask = ((redshift_ratio > min_redshift_ratio)
+                        & (redshift_ratio < max_redshift_ratio))
+
+                # Require a DDF template for DDF targets
+                if ddf:
+                    mask &= target_ddfs
+
+                # Make sure that there are some valid templates
+                if np.sum(mask) == 0:
+                    continue
+
+                use_templates = np.where(mask)[0]
+
+                # Generate variants on the training data that are more
+                # representative of the test data
+                max_attempts = 50
+                attempts = 0
+                while True:
+                    attempts += 1
+                    if attempts > max_attempts:
+                        # Failed to generate a lightcurve at this redshift.
+                        # This is fine because selection efficiency means
+                        # that some objects will never be seen at high
+                        # redshifts.
+                        break
+
+                    # Choose a random element of the training set to use as the
+                    # template.
+                    template_id = np.random.choice(use_templates)
+
+                    aug_meta, aug_data = self.augment_object(
+                        object_meta=target_metas[template_id],
+                        object_data=target_datas[template_id],
+                        gp=target_gps[template_id],
+                        new_ddf=ddf,
+                        new_redshift=redshift
+                    )
+
+                    # Ensure that the generated object would be detected.
+                    if np.sum(aug_data['detected']) < 2:
+                        continue
+
+                    # Save it and move on to the next one.
+                    all_aug_meta.append(aug_meta)
+                    all_aug_data.append(aug_data)
+                    break
+
+        all_aug_meta = pd.DataFrame(all_aug_meta)
+        all_aug_data = pd.concat(all_aug_data, sort=False)
+
+        new_dataset = Dataset()
+
+        new_dataset.flux_data = all_aug_data
+        new_dataset.meta_data = all_aug_meta
+        if chunk is not None:
+            new_dataset.dataset_name = '%s_augment_v%d_%d_%03d' % (
+                self.dataset_name, self._augment_version, num_augments, chunk)
+        else:
+            new_dataset.dataset_name = '%s_augment_v%d_%d' % (
+                self.dataset_name, self._augment_version, num_augments)
+
+        # Save the results of the augmentation
+        output_path = '%s/%s.h5' % (settings['AUGMENT_DIR'],
+                                    new_dataset.dataset_name)
+
+        new_dataset.meta_data.to_hdf(output_path, key='meta', mode='w')
+        new_dataset.flux_data.to_hdf(output_path, key='df')
+
+        return new_dataset
+
+    def augment_dataset_old2(self, test_dataset, num_augments=100000):
         """Augment the dataset for training.
 
         This augmenting method uses the test dataset as a reference, and
@@ -1513,9 +1729,12 @@ class Dataset(object):
 
             # Original sample only (no augments)
             original_mask = (self.meta_data['object_id'] % 1) == 0
-            print('BASE WEIGHTED LOG LOSS: %.5f' %
-                  multi_weighted_logloss(y.values[original_mask],
-                                         oof_preds[original_mask]))
+            if np.sum(original_mask) > 0:
+                # Can only do this for augments that include the original
+                # training sample...
+                print('BASE WEIGHTED LOG LOSS: %.5f' %
+                      multi_weighted_logloss(y.values[original_mask],
+                                             oof_preds[original_mask]))
 
             # Build a pandas dataframe with the out of fold predictions
             oof_preds_df = pd.DataFrame(data=oof_preds,

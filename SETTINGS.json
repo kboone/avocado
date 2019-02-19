@@ -11,6 +11,7 @@
 
     "FEATURES_DIR": "./features",
     "FEATURES_PATH_FORMAT": "./features/features_v%d_%s.h5",
+    "GP_FITS_PATH_FORMAT": "./features/gp_fits_v%d_%s.h5",
     "FEATURES_VERSION": 4,
 
     "SALT_FITS_DIR": "./salt_fits",
@@ -18,13 +19,13 @@
 
     "AUGMENT_DIR": "./augment",
     "AUGMENT_PATH_FORMAT": "./augment/%s.h5",
-    "NUM_AUGMENTS": 250000,
-    "AUGMENT_VERSION": 15,
+    "NUM_AUGMENTS": 1000,
+    "AUGMENT_VERSION": 16,
 
     "MODEL_DIR": "./model",
     "MODEL_PATH_FORMAT": "./model/model_%d.pkl",
 
-    "FLAT_WEIGHT": false,
+    "FLAT_WEIGHT": true,
     "REDSHIFT_WEIGHT": false,
 
     "SCORES_DIR": "./scores",
