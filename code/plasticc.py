@@ -418,6 +418,22 @@ class Dataset(object):
             suffixes=('', '_unblind'),
         )
 
+    def load_predictions(self, num_augments=None):
+        """Load the predictions for some part of the test set"""
+        prediction_path = settings["SUBMISSIONS_PROBE99_PATH_FORMAT"]
+
+        if num_augments is None:
+            num_augments = settings['NUM_AUGMENTS']
+
+        predictions = pd.read_csv(prediction_path % num_augments)
+
+        self.meta_data = self.meta_data.merge(
+            predictions,
+            how='left',
+            on='object_id',
+            suffixes=('', '_prediction'),
+        )
+
     @property
     def features_path(self):
         """Path to the features file for this dataset"""
@@ -441,8 +457,8 @@ class Dataset(object):
 
         rf = self.raw_features
 
-        # max_flux = rf['max_flux_3'] - rf['min_flux_3']
-        max_flux = np.clip(rf['max_flux_3'], 0.001, None)
+        max_flux = rf['max_flux_3'] - rf['min_flux_3']
+        # max_flux = np.clip(rf['max_flux_3'], 0.001, None)
         max_mag = -2.5*np.log10(np.abs(max_flux))
 
         # If desired, undo the photoz
@@ -1406,17 +1422,17 @@ class Dataset(object):
             # Reweight in each redshift bin along with in each class bin so
             # that the classifier can't just use the redshift distribution of
             # the different classes to classify things.
-            # redshift_bins = np.hstack([-1, 0, np.logspace(-1, np.log10(3), 10),
-                                       # 100])
-            redshift_bins = np.hstack([-50, np.linspace(-8, 0, 10), 5, 50])
+            redshift_bins = np.hstack([-1, 0, np.logspace(-1, np.log10(3), 10),
+                                       100])
+            # redshift_bins = np.hstack([-50, np.linspace(-8, 0, 10), 5, 50])
             target_map = {j: i for i, j in enumerate(classes)}
 
             counts = np.zeros((len(redshift_bins), len(target_map)))
 
-            # redshift_indices = np.searchsorted(
-                # redshift_bins, self.meta_data['hostgal_specz']) - 1
             redshift_indices = np.searchsorted(
-                redshift_bins, self.features['max_mag']) - 1
+                redshift_bins, self.meta_data['hostgal_specz']) - 1
+            # redshift_indices = np.searchsorted(
+                # redshift_bins, self.features['max_mag']) - 1
             class_indices = [target_map[i] for i in self.meta_data['target']]
 
             for redshift_index, class_index in zip(redshift_indices,
@@ -1443,10 +1459,10 @@ class Dataset(object):
                 meta_data = self.meta_data.loc[mask]
                 features = self.features.loc[mask]
 
-                # redshift_indices = np.searchsorted(
-                    # redshift_bins, meta_data['hostgal_specz']) - 1
                 redshift_indices = np.searchsorted(
-                    redshift_bins, features['max_mag']) - 1
+                    redshift_bins, meta_data['hostgal_specz']) - 1
+                # redshift_indices = np.searchsorted(
+                    # redshift_bins, features['max_mag']) - 1
                 class_indices = [target_map[i] for i in meta_data['target']]
 
                 return weights[redshift_indices, class_indices]
