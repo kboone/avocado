@@ -9,6 +9,7 @@ import pickle
 import sys
 from astropy.table import Table
 from astropy.cosmology import FlatLambdaCDM
+from astropy.stats import biweight_location
 from scipy.optimize import minimize
 from sklearn.model_selection import StratifiedKFold
 from scipy.signal import find_peaks
@@ -675,14 +676,8 @@ class Dataset(object):
                 # No observations in this band
                 continue
 
-            # ref_flux = np.percentile(band_data['flux'], 20)
-            # ref_flux = np.median(band_data['flux'])
-
-            # Determine the reference flux level for this band from the final
-            # observations.
-            ref_count = 7
-            ref_indices = np.argsort(band_data['mjd'])[-ref_count:]
-            ref_flux = min(0, np.median(band_data['flux'].iloc[ref_indices]))
+            # Use a biweight location to estimate the background
+            ref_flux = biweight_location(band_data['flux'])
 
             for idx, row in band_data.iterrows():
                 times.append(row['mjd'] - start_mjd)
@@ -984,6 +979,13 @@ class Dataset(object):
             features['positive_width_%d' % band] = positive_widths[band]
             features['negative_width_%d' % band] = negative_widths[band]
 
+        # Calculate the total absolute differences of the lightcurve. For
+        # supernovae, they typically go up and down a single time. Periodic
+        # objects will have many more ups and downs.
+        abs_diffs = np.sum(np.abs(pred[:, 1:] - pred[:, :-1]), axis=1)
+        for band in range(num_passbands):
+            features['abs_diff_%d' % band] = abs_diffs[band]
+
         # Find times to fractions of the peak amplitude
         fractions = [0.8, 0.5, 0.2]
         for band in range(num_passbands):
@@ -1011,13 +1013,19 @@ class Dataset(object):
         # than a 3 sigma detection of something.
         features['frac_background'] = np.sum(np.abs(s2ns) < 3) / len(s2ns)
 
-        # Sum up the total signal-to-noise in each band
         for band in range(6):
             mask = bands == band
             band_fluxes = fluxes[mask]
             band_flux_errs = flux_errs[mask]
+
+            # Sum up the total signal-to-noise in each band
             total_band_s2n = np.sqrt(np.sum((band_fluxes / band_flux_errs)**2))
             features['total_s2n_%d' % band] = total_band_s2n
+
+            # Calculate percentiles of the data in each band.
+            for percentile in (10, 30, 50, 70, 90):
+                features['percentile_%d_%d' % (band, percentile)] = \
+                    np.percentile(band_fluxes, percentile)
 
         # Count the time delay between the first and last significant fluxes
         thresholds = [5, 10, 20]
@@ -1236,7 +1244,7 @@ class Dataset(object):
         else:
             return object_meta, object_data
 
-    def augment_dataset(self, num_augments=100000, chunk=None):
+    def augment_dataset(self, test_dataset, num_augments=100000, chunk=None):
         """Augment the dataset for training.
 
         This augmenting method attempts to produce an even distribution of each
@@ -1297,6 +1305,26 @@ class Dataset(object):
         print("Augmenting the dataset...")
         sys.stdout.flush()
         for idx in tqdm.tqdm(range(num_augments)):
+            # Choose random element of the test set to use as a reference. We
+            # scale up the number of DDF objects in the augmented set since
+            # they are very rare in the test set.
+            # while True:
+                # target_id = np.random.randint(0, len(test_dataset.meta_data))
+                # target_meta = test_dataset.meta_data.iloc[target_id]
+
+                # if target_meta['ddf']:
+                    # # Keep all DDF
+                    # break
+                # else:
+                    # # Scale down the non-DDF so that more DDF objects end up in
+                    # # the final augmented training set.
+                    # if np.random.rand() < 0.1:
+                        # break
+
+            # galactic = target_meta['hostgal_photoz'] == 0
+            # ddf = target_meta['ddf'] > 0
+            # redshift = target_meta['hostgal_photoz']
+
             # Choose whether to simulate a galactic object or not. I simulate a
             # higher fraction of galactic objects than in the test set (12%
             # there), but note that the galactic and extragalactic
@@ -1366,7 +1394,7 @@ class Dataset(object):
 
                 # Generate variants on the training data that are more
                 # representative of the test data
-                max_attempts = 50
+                max_attempts = 10
                 attempts = 0
                 while True:
                     attempts += 1
