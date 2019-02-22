@@ -1268,16 +1268,16 @@ class Dataset(object):
 
         print("Preprocessing the original dataset...")
         for target in classes[:-1]:
-            all_target_metas = self.meta_data[self.meta_data['target'] ==
-                                              target]
+            target_indices = np.where(self.meta_data['target'] == target)[0]
+
             target_metas = []
             target_datas = []
             target_gps = []
             target_redshifts = []
             target_ddfs = []
 
-            for idx in range(len(all_target_metas)):
-                object_meta = all_target_metas.iloc[idx]
+            for idx in target_indices:
+                object_meta = self.meta_data.iloc[idx]
                 object_data = self.flux_data[self.flux_data['object_id'] ==
                                              object_meta['object_id']]
                 gp = self.gp_fits[idx]
@@ -1682,6 +1682,32 @@ class Dataset(object):
                 class_indices = [target_map[i] for i in meta_data['target']]
 
                 return weights[redshift_indices, class_indices]
+        elif settings['RATES_WEIGHT']:
+            rate_weights = pd.read_csv(settings['RATES_PATH_FORMAT'] %
+                                       settings['AUGMENT_VERSION'])
+            redshift_bins = np.hstack([rate_weights['min_redshift'], 9999])
+            redshift_bins[0] = -1
+
+            def calc_weights(mask):
+                meta_data = self.meta_data.loc[mask]
+                redshifts = meta_data['hostgal_photoz']
+
+                redshift_indices = np.searchsorted(
+                    redshift_bins, redshifts) - 1
+
+                target_map = {i: j for j, i in enumerate(classes)}
+                target_indices = np.array([target_map[i] for i in
+                                           meta_data['target']])
+
+                weights = rate_weights.values[redshift_indices,
+                                              3 + target_indices]
+                weights[redshifts == 0] = 1
+
+                scale_weights = np.array([class_weights[i] for i in
+                                          meta_data['target']])
+                full_weights = 16 * weights * scale_weights
+
+                return np.array(full_weights)
         else:
             # Default weights
             norm_class_weights = {i: class_weights[i] * np.sum(w) / w[i] for i
@@ -1698,7 +1724,7 @@ class Dataset(object):
                 train_x, train_y = features.loc[train_mask], y.loc[train_mask]
                 eval_x, eval_y = features.loc[eval_mask], y.loc[eval_mask]
 
-                if settings['REDSHIFT_WEIGHT']:
+                if settings['REDSHIFT_WEIGHT'] or settings['RATES_WEIGHT']:
                     train_weights = calc_weights(train_mask)
                     eval_weights = calc_weights(eval_mask)
                 else:

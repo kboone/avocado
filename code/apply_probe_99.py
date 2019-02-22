@@ -19,6 +19,16 @@ extgal_sum = np.sum(extgal_vals, axis=1)
 
 is_gal = gal_sum > extgal_sum
 
+# print("HACK: ADD IN CLASS WEIGHTS")
+# dataset['class_64'] *= 2
+# dataset['class_15'] *= 2
+
+# Zero out cross-terms for galactic/extragalactic
+for gal_class in gal_classes:
+    dataset['class_%d' % gal_class][~is_gal] = 0
+for extgal_class in extgal_classes:
+    dataset['class_%d' % extgal_class][is_gal] = 0
+
 # Remove class 99 predictions.
 orig_99_preds = dataset['class_99'].copy()
 dataset['class_99'] = 0.

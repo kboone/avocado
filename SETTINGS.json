@@ -20,18 +20,22 @@
     "AUGMENT_DIR": "./augment",
     "AUGMENT_PATH_FORMAT": "./augment/%s.h5",
     "NUM_AUGMENTS": 1000,
-    "AUGMENT_VERSION": 16,
+    "AUGMENT_VERSION": 17,
 
     "MODEL_DIR": "./model",
     "MODEL_PATH_FORMAT": "./model/model_%d.pkl",
 
     "FLAT_WEIGHT": true,
     "REDSHIFT_WEIGHT": false,
+    "RATES_WEIGHT": false,
 
     "SCORES_DIR": "./scores",
     "SCORES_PATH_FORMAT": "./scores/scores_%d.npz",
 
     "SUBMISSIONS_DIR": "./submissions/",
     "SUBMISSIONS_PATH_FORMAT": "./submissions/submission_%d.csv",
-    "SUBMISSIONS_PROBE99_PATH_FORMAT": "./submissions/submission_probe99_%d.csv"
+    "SUBMISSIONS_RATES_PATH_FORMAT": "./submissions/submission_rates_%d.csv",
+    "SUBMISSIONS_PROBE99_PATH_FORMAT": "./submissions/submission_probe99_%d.csv",
+
+    "RATES_PATH_FORMAT": "./scores/rates_aug%s.csv"
 }
