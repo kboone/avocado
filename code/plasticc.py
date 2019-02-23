@@ -1,7 +1,7 @@
+import lightgbm as lgb
 from collections import OrderedDict, defaultdict
 import george
 from george import kernels
-import lightgbm as lgb
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -471,7 +471,7 @@ class Dataset(object):
 
         rf = self.raw_features
 
-        max_flux = rf['max_flux_3'] - rf['min_flux_3']
+        max_flux = rf['max_flux_3']# - rf['min_flux_3']
         # max_flux = np.clip(rf['max_flux_3'], 0.001, None)
         max_mag = -2.5*np.log10(np.abs(max_flux))
 
@@ -504,7 +504,10 @@ class Dataset(object):
         # features['max_flux'] = rf['max_flux_3']
         features['max_mag'] = max_mag
 
-        features['pos_flux_ratio'] = rf['max_flux_3'] / max_flux
+        # features['pos_flux_ratio'] = rf['max_flux_3'] / max_flux
+        features['pos_flux_ratio'] = (
+            rf['max_flux_3'] / (rf['max_flux_3'] - rf['min_flux_3'])
+        )
         features['max_flux_ratio_r'] = (
             (rf['max_flux_5'] - rf['max_flux_3']) /
             (np.abs(rf['max_flux_5']) + np.abs(rf['max_flux_3']))
@@ -612,6 +615,27 @@ class Dataset(object):
             rf['total_s2n_4'] +
             rf['total_s2n_5']
         )
+
+        for percentile in (10, 30, 50, 70, 90):
+            frac_percentiles = []
+            for band in range(num_passbands):
+                percentile_flux = rf['percentile_%d_%d' % (band, percentile)]
+                max_flux = rf['max_flux_%d' % band]
+                min_flux = rf['min_flux_%d' % band]
+                frac_percentiles.append(
+                    (percentile_flux - min_flux) / (max_flux - min_flux)
+                )
+            features['frac_percentile_%d' % percentile] = \
+                np.nanmedian(frac_percentiles, axis=0)
+
+        frac_abs_diffs = []
+        for band in range(num_passbands):
+            abs_diff = rf['abs_diff_%d' % band]
+            max_flux = rf['max_flux_%d' % band]
+            min_flux = rf['min_flux_%d' % band]
+
+            frac_abs_diffs.append(abs_diff / (max_flux - min_flux))
+        features['frac_abs_diff'] = np.nanmedian(frac_abs_diffs, axis=0)
 
         self.features = features
 
@@ -1024,8 +1048,11 @@ class Dataset(object):
 
             # Calculate percentiles of the data in each band.
             for percentile in (10, 30, 50, 70, 90):
-                features['percentile_%d_%d' % (band, percentile)] = \
-                    np.percentile(band_fluxes, percentile)
+                try:
+                    val = np.percentile(band_fluxes, percentile)
+                except IndexError:
+                    val = np.nan
+                features['percentile_%d_%d' % (band, percentile)] = val
 
         # Count the time delay between the first and last significant fluxes
         thresholds = [5, 10, 20]
@@ -2103,6 +2130,7 @@ def _resample_lightcurve(object_data, gp, new_ddf, original_redshift,
         adjust_scale = 10**(0.4*delta_distmod)
 
     object_data['flux'] *= adjust_scale
+    object_data['flux_err'] *= adjust_scale
 
     # We have the resampled models! Note that there is no error added in yet,
     # so we set the detected flags to default values and clean up.
