@@ -19,13 +19,13 @@
 
     "AUGMENT_DIR": "./augment",
     "AUGMENT_PATH_FORMAT": "./augment/%s.h5",
-    "NUM_AUGMENTS": 1000,
-    "AUGMENT_VERSION": 20,
+    "NUM_AUGMENTS": 2,
+    "AUGMENT_VERSION": 22,
 
     "MODEL_DIR": "./model",
     "MODEL_PATH_FORMAT": "./model/model_%d.pkl",
 
-    "FLAT_WEIGHT": true,
+    "FLAT_WEIGHT": false,
     "REDSHIFT_WEIGHT": false,
     "RATES_WEIGHT": false,
 

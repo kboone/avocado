@@ -616,6 +616,7 @@ class Dataset(object):
             rf['total_s2n_5']
         )
 
+        all_frac_percentiles = []
         for percentile in (10, 30, 50, 70, 90):
             frac_percentiles = []
             for band in range(num_passbands):
@@ -625,8 +626,13 @@ class Dataset(object):
                 frac_percentiles.append(
                     (percentile_flux - min_flux) / (max_flux - min_flux)
                 )
-            features['frac_percentile_%d' % percentile] = \
-                np.nanmedian(frac_percentiles, axis=0)
+            all_frac_percentiles.append(np.nanmedian(frac_percentiles, axis=0))
+
+        features['percentile_diff_30_70'] = (
+            all_frac_percentiles[3] - all_frac_percentiles[1])
+        features['percentile_diff_10_90'] = (
+            all_frac_percentiles[4] - all_frac_percentiles[0]
+        )
 
         frac_abs_diffs = []
         for band in range(num_passbands):
@@ -1271,7 +1277,129 @@ class Dataset(object):
         else:
             return object_meta, object_data
 
-    def augment_dataset(self, test_dataset, num_augments=100000, chunk=None):
+    def augment_dataset(self, test_dataset, num_augments=40,
+                        keep_training=False, chunk=None):
+        """Augment the dataset for training.
+
+        This augmenting method attempts to use every object in the training
+        sample and generate new objects at higher redshifts compared to the
+        reference.
+
+        We assign the k-folding labels before augmenting to avoid biasing the
+        cross-validation.
+        """
+        # Load the GP fits.
+        print("Loading the GP fits...")
+        try:
+            self.load_gp_fits()
+        except FileNotFoundError:
+            raise PlasticcException("Previous GP fits not found! Create them "
+                                    "by running Dataset.fit_all_gps before "
+                                    "augmenting.")
+        all_aug_meta = []
+        all_aug_data = []
+
+        # Generate the augments.
+        print("Augmenting the dataset...")
+        sys.stdout.flush()
+        for template_idx in tqdm.tqdm(range(len(self.meta_data))):
+            template_meta = self.meta_data.iloc[template_idx]
+            template_data = self.flux_data[self.flux_data['object_id'] ==
+                                           template_meta['object_id']]
+            template_gp = self.gp_fits[template_idx]
+            template_redshift = template_meta['hostgal_specz']
+            template_ddf = template_meta['ddf']
+
+            if keep_training:
+                # Keep the original training data
+                all_aug_meta.append(template_meta)
+                all_aug_data.append(template_data)
+
+            # For DDF templates, generate both a DDF and a WFD lightcurve. For
+            # WFD, can only generate other WFD.
+            for aug_ddf in (0, 1):
+                if aug_ddf and not template_ddf:
+                    continue
+
+                # Pick the redshifts to generate objects at.
+                galactic = template_redshift == 0
+                if not galactic:
+                    min_redshift = 0.95 * template_redshift
+                    max_redshift = 5 * template_redshift
+
+                    # For high-redshift objects, make sure that we don't shift
+                    # the object too far in wavelength so that the GP
+                    # extrapolation is still OK.
+                    max_redshift = np.min(
+                        [max_redshift, 1.5 * (1 + template_redshift) - 1]
+                    )
+
+                for idx in range(num_augments):
+                    # Choose new redshift from a log-uniform distribution.
+                    if galactic:
+                        aug_redshift = 0
+                    else:
+                        aug_redshift = np.exp(np.random.uniform(
+                            np.log(min_redshift), np.log(max_redshift)
+                        ))
+
+                        # print(template_idx, template_redshift, min_redshift,
+                              # max_redshift, aug_redshift)
+
+                    max_attempts = 10
+                    attempts = 0
+                    while True:
+                        # print(attempts)
+                        attempts += 1
+                        if attempts > max_attempts:
+                            # Failed to generate a lightcurve at this redshift.
+                            # This is fine because selection efficiency means
+                            # that some objects will never be seen at high
+                            # redshifts.
+                            break
+
+                        aug_meta, aug_data = self.augment_object(
+                            object_meta=template_meta,
+                            object_data=template_data,
+                            gp=template_gp,
+                            new_ddf=aug_ddf,
+                            new_redshift=aug_redshift
+                        )
+
+                        # Ensure that the generated object would be detected.
+                        if np.sum(aug_data['detected']) < 2:
+                            continue
+
+                        # Save it and move on to the next one.
+                        all_aug_meta.append(aug_meta)
+                        all_aug_data.append(aug_data)
+                        break
+
+        all_aug_meta = pd.DataFrame(all_aug_meta)
+        all_aug_data = pd.concat(all_aug_data, sort=False)
+
+        new_dataset = Dataset()
+
+        new_dataset.flux_data = all_aug_data
+        new_dataset.meta_data = all_aug_meta
+        if chunk is not None:
+            new_dataset.dataset_name = '%s_augment_v%d_%d_%03d' % (
+                self.dataset_name, self._augment_version, num_augments, chunk)
+        else:
+            new_dataset.dataset_name = '%s_augment_v%d_%d' % (
+                self.dataset_name, self._augment_version, num_augments)
+
+        # Save the results of the augmentation
+        output_path = '%s/%s.h5' % (settings['AUGMENT_DIR'],
+                                    new_dataset.dataset_name)
+
+        new_dataset.meta_data.to_hdf(output_path, key='meta', mode='w')
+        new_dataset.flux_data.to_hdf(output_path, key='df')
+
+        return new_dataset
+
+    def augment_dataset_old3(self, test_dataset, num_augments=100000,
+                             chunk=None):
         """Augment the dataset for training.
 
         This augmenting method attempts to produce an even distribution of each
@@ -1401,11 +1529,11 @@ class Dataset(object):
                 # can be pickier on the minimum end because the training set is
                 # a lot bluer than the test set. Filters also shift out faster
                 # when you make a spectrum bluer compared to making it redder.
-                # We avoid making things brighter wherever possible because
-                # then the models can go crazy.
+                # We avoid making things brighter wherever possible because we
+                # then become much more sensitive to noise levels.
                 redshift_ratio = ((1 + redshift) / (1 + target_redshifts))
                 max_redshift_ratio = 1.5
-                min_redshift_ratio = 0.8
+                min_redshift_ratio = 0.95
                 mask = ((redshift_ratio > min_redshift_ratio)
                         & (redshift_ratio < max_redshift_ratio))
 
