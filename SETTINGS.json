@@ -20,7 +20,7 @@
     "AUGMENT_DIR": "./augment",
     "AUGMENT_PATH_FORMAT": "./augment/%s.h5",
     "NUM_AUGMENTS": 2,
-    "AUGMENT_VERSION": 22,
+    "AUGMENT_VERSION": 23,
 
     "MODEL_DIR": "./model",
     "MODEL_PATH_FORMAT": "./model/model_%d.pkl",

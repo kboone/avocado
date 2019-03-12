@@ -1167,7 +1167,8 @@ class Dataset(object):
 
     def augment_object(self, idx=None, object_meta=None, object_data=None,
                        gp=None, new_ddf=None, new_redshift=None,
-                       num_observations=None, full_return=False):
+                       num_observations=None, full_return=False,
+                       photoz_reference=None):
         """Generate an augmented version of an object for training
 
         The following forms of data augmentation are applied:
@@ -1257,7 +1258,13 @@ class Dataset(object):
         object_data = _simulate_lightcurve_noise(object_model, new_ddf)
 
         # Model the photoz
-        object_meta = _simulate_photoz(object_meta)
+        if photoz_reference is not None:
+            # Use the reference to simulate the photoz
+            object_meta = _simulate_photoz_reference(object_meta,
+                                                     photoz_reference)
+        else:
+            # Use a model of the photoz
+            object_meta = _simulate_photoz_model(object_meta)
 
         # Smear the mwebv value a bit so that it doesn't uniquely identify
         # points. I leave the position on the sky unchanged (ra, dec, etc.).
@@ -1298,6 +1305,9 @@ class Dataset(object):
                                     "augmenting.")
         all_aug_meta = []
         all_aug_data = []
+
+        print("Loading photo-z reference from test set...")
+        photoz_reference = _load_photoz_reference()
 
         # Generate the augments.
         print("Augmenting the dataset...")
@@ -1363,7 +1373,8 @@ class Dataset(object):
                             object_data=template_data,
                             gp=template_gp,
                             new_ddf=aug_ddf,
-                            new_redshift=aug_redshift
+                            new_redshift=aug_redshift,
+                            photoz_reference=photoz_reference
                         )
 
                         # Ensure that the generated object would be detected.
@@ -2343,7 +2354,7 @@ def _simulate_lightcurve_noise(object_data, ddf):
     return object_data
 
 
-def _simulate_photoz(object_meta):
+def _simulate_photoz_model(object_meta):
     """Simulate the photoz determination for a lightcurve.
 
     I estimate the photoz with a Gaussian mixture model that was approximated
@@ -2399,6 +2410,91 @@ def _simulate_photoz(object_meta):
 
     object_meta['hostgal_photoz'] = new_photoz
     object_meta['hostgal_photoz_err'] = photoz_std
+    object_meta['distmod'] = cosmo.distmod(new_photoz).value
+
+    return object_meta
+
+
+def _load_photoz_reference():
+    """Load a reference dataset for photo-z estimation
+
+    This reads the test set and extracts all of the photo-zs and spec-zs
+
+    Returns
+    -------
+    numpy ndarray
+        A Nx3 array with reference photo-zs for each entry with a spec-z in the
+        test set. The columns are spec-z, photo-z and photo-z error.
+    """
+    test_dataset = Dataset()
+    test_dataset.load_test_data()
+
+    cut = test_dataset.meta_data['hostgal_specz'] > 0
+    cut_meta = test_dataset.meta_data[cut]
+
+    result = np.vstack([cut_meta['hostgal_specz'],
+                        cut_meta['hostgal_photoz'],
+                        cut_meta['hostgal_photoz_err']]).T
+
+    return result
+
+
+def _simulate_photoz_reference(object_meta, photoz_reference):
+    """Simulate the photoz determination for a lightcurve using the test set as
+    a reference.
+
+    I apply the observed differences between photo-zs and spec-zs directly to
+    the new redshifts. This does not capture all of the intricacies of
+    photo-zs, but it does ensure that we cover all of the available parameter
+    space with at least some simulations.
+
+    Parameters
+    ----------
+    object_meta : pandas Series
+        Original object meta data
+
+    photoz_reference : numpy ndarray
+        A Nx3 array with reference photo-zs. The columns are spec-z, photo-z
+        and photo-z error.
+
+    Returns
+    -------
+    pandas Series
+        The object meta data with an updated photoz estimate.
+    """
+    # Make a copy of the object metadata so that we don't affect the input.
+    object_meta = object_meta.copy()
+
+    new_specz = object_meta['hostgal_specz']
+
+    if new_specz == 0:
+        # Galactic object. For the PLAsTiCC challenge, the reshift is always 0.
+        # Leave things as is.
+        return object_meta
+
+    while True:
+        ref_idx = np.random.choice(len(photoz_reference))
+        ref_specz, ref_photoz, ref_photoz_err = photoz_reference[ref_idx]
+
+        # Randomly choose the order for the difference. Degeneracies work both
+        # ways, so even if we only see specz=0.2 -> photoz=3.0 in the data, the
+        # reverse also happens, but we can't get spec-zs at z=3 so we don't see
+        # this.
+        new_diff = (ref_photoz - ref_specz) * np.random.choice([-1, 1])
+
+        # Apply the difference, and make sure that the photoz is > 0.
+        new_photoz = new_specz + new_diff
+        if new_photoz < 0:
+            continue
+
+        # Add some noise to the error so that the classifier can't focus in on
+        # it.
+        new_photoz_err = ref_photoz_err * np.random.normal(1, 0.05)
+
+        break
+
+    object_meta['hostgal_photoz'] = new_photoz
+    object_meta['hostgal_photoz_err'] = new_photoz_err
     object_meta['distmod'] = cosmo.distmod(new_photoz).value
 
     return object_meta
