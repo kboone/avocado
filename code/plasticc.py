@@ -27,8 +27,10 @@ end_mjd = 60675 + pad
 
 # Define class labels, galactic vs extragalactic label and weights
 classes = [6, 15, 16, 42, 52, 53, 62, 64, 65, 67, 88, 90, 92, 95, 99]
-class_weights = {6: 1, 15: 2, 16: 1, 42: 1, 52: 1, 53: 1, 62: 1, 64: 2, 65: 1,
-                 67: 1, 88: 1, 90: 1, 92: 1, 95: 1, 99: 2}
+kaggle_class_weights = {6: 1, 15: 2, 16: 1, 42: 1, 52: 1, 53: 1, 62: 1, 64: 2,
+                        65: 1, 67: 1, 88: 1, 90: 1, 92: 1, 95: 1, 99: 2}
+no_unknown_class_weights = {6: 1, 15: 1, 16: 1, 42: 1, 52: 1, 53: 1, 62: 1, 64:
+                            1, 65: 1, 67: 1, 88: 1, 90: 1, 92: 1, 95: 1, 99: 0}
 class_galactic = {6: True, 15: False, 16: True, 42: False, 52: False, 53: True,
                   62: False, 64: False, 65: True, 67: False, 88: False, 90:
                   False, 92: True, 95: False}
@@ -112,7 +114,7 @@ def multi_weighted_logloss(y_true, y_preds):
     # Get the number of positives for each class
     nb_pos = y_ohe.sum(axis=0).values.astype(float)
     # Weight average and divide by the number of positives
-    class_arr = np.array([class_weights[i] for i in use_classes])
+    class_arr = np.array([kaggle_class_weights[i] for i in use_classes])
     y_w = y_log_ones * class_arr / nb_pos
 
     loss = - np.sum(y_w) / np.sum(class_arr)
@@ -140,13 +142,14 @@ def do_predictions_flatprob(object_ids, features, classifiers):
     gal_frac_99 = 0.04
 
     # Weights without 99 included.
-    weight_gal = sum([class_weights[class_id] for class_id, is_gal in
+    weight_gal = sum([kaggle_class_weights[class_id] for class_id, is_gal in
                       class_galactic.items() if is_gal])
-    weight_extgal = sum([class_weights[class_id] for class_id, is_gal in
+    weight_extgal = sum([kaggle_class_weights[class_id] for class_id, is_gal in
                          class_galactic.items() if not is_gal])
 
-    guess_99_gal = gal_frac_99 * class_weights[99] / weight_gal
-    guess_99_extgal = (1 - gal_frac_99) * class_weights[99] / weight_extgal
+    guess_99_gal = gal_frac_99 * kaggle_class_weights[99] / weight_gal
+    guess_99_extgal = ((1 - gal_frac_99) * kaggle_class_weights[99] /
+                       weight_extgal)
 
     is_gals = features['hostgal_photoz'] == 0.
 
@@ -532,14 +535,14 @@ class Dataset(object):
         features['positive_width'] = rf['positive_width_3'] / time_scale
         features['negative_width'] = rf['negative_width_3'] / time_scale
 
-        features['frac_time_fwd_0.8'] = rf['frac_time_fwd_0.8_3'] / time_scale
+        # features['frac_time_fwd_0.8'] = rf['frac_time_fwd_0.8_3'] / time_scale
         features['frac_time_fwd_0.5'] = rf['frac_time_fwd_0.5_3'] / time_scale
         features['frac_time_fwd_0.2'] = rf['frac_time_fwd_0.2_3'] / time_scale
 
-        features['ratio_r_time_fwd_0.8'] = (
-            rf['frac_time_fwd_0.8_3'] / rf['frac_time_fwd_0.8_5'])
-        features['ratio_b_time_fwd_0.8'] = (
-            rf['frac_time_fwd_0.8_3'] / rf['frac_time_fwd_0.8_1'])
+        # features['ratio_r_time_fwd_0.8'] = (
+            # rf['frac_time_fwd_0.8_3'] / rf['frac_time_fwd_0.8_5'])
+        # features['ratio_b_time_fwd_0.8'] = (
+            # rf['frac_time_fwd_0.8_3'] / rf['frac_time_fwd_0.8_1'])
         features['ratio_r_time_fwd_0.5'] = (
             rf['frac_time_fwd_0.5_3'] / rf['frac_time_fwd_0.5_5'])
         features['ratio_b_time_fwd_0.5'] = (
@@ -549,14 +552,14 @@ class Dataset(object):
         features['ratio_b_time_fwd_0.5'] = (
             rf['frac_time_fwd_0.2_3'] / rf['frac_time_fwd_0.2_1'])
 
-        features['frac_time_bwd_0.8'] = rf['frac_time_bwd_0.8_3'] / time_scale
+        # features['frac_time_bwd_0.8'] = rf['frac_time_bwd_0.8_3'] / time_scale
         features['frac_time_bwd_0.5'] = rf['frac_time_bwd_0.5_3'] / time_scale
         features['frac_time_bwd_0.2'] = rf['frac_time_bwd_0.2_3'] / time_scale
 
-        features['ratio_r_time_bwd_0.8'] = (
-            rf['frac_time_bwd_0.8_3'] / rf['frac_time_bwd_0.8_5'])
-        features['ratio_b_time_bwd_0.8'] = (
-            rf['frac_time_bwd_0.8_3'] / rf['frac_time_bwd_0.8_1'])
+        # features['ratio_r_time_bwd_0.8'] = (
+            # rf['frac_time_bwd_0.8_3'] / rf['frac_time_bwd_0.8_5'])
+        # features['ratio_b_time_bwd_0.8'] = (
+            # rf['frac_time_bwd_0.8_3'] / rf['frac_time_bwd_0.8_1'])
         features['ratio_r_time_bwd_0.5'] = (
             rf['frac_time_bwd_0.5_3'] / rf['frac_time_bwd_0.5_5'])
         features['ratio_b_time_bwd_0.5'] = (
@@ -573,21 +576,21 @@ class Dataset(object):
         features['time_width_s2n_5'] = rf['time_width_s2n_5'] / time_scale
 
         features['count_max_center'] = rf['count_max_center']
-        features['count_max_rise_20'] = rf['count_max_rise_20']
-        features['count_max_rise_50'] = rf['count_max_rise_50']
-        features['count_max_rise_100'] = rf['count_max_rise_100']
-        features['count_max_fall_20'] = rf['count_max_fall_20']
-        features['count_max_fall_50'] = rf['count_max_fall_50']
-        features['count_max_fall_100'] = rf['count_max_fall_100']
+        features['count_max_rise_20'] = rf['count_max_rise_20'] + features['count_max_center']
+        features['count_max_rise_50'] = rf['count_max_rise_50'] + features['count_max_rise_20']
+        features['count_max_rise_100'] = rf['count_max_rise_100'] + features['count_max_rise_50']
+        features['count_max_fall_20'] = rf['count_max_fall_20'] + features['count_max_center']
+        features['count_max_fall_50'] = rf['count_max_fall_50'] + features['count_max_fall_20']
+        features['count_max_fall_100'] = rf['count_max_fall_100'] + features['count_max_fall_50']
 
-        features['num_peaks'] = np.nanmedian([
-            rf['peaks_pos_0_count'],
-            rf['peaks_pos_1_count'],
-            rf['peaks_pos_2_count'],
-            rf['peaks_pos_3_count'],
-            rf['peaks_pos_4_count'],
-            rf['peaks_pos_5_count']
-        ], axis=0)
+        # features['num_peaks'] = np.nanmedian([
+            # rf['peaks_pos_0_count'],
+            # rf['peaks_pos_1_count'],
+            # rf['peaks_pos_2_count'],
+            # rf['peaks_pos_3_count'],
+            # rf['peaks_pos_4_count'],
+            # rf['peaks_pos_5_count']
+        # ], axis=0)
 
         features['peak_frac_2'] = np.nanmedian([
             rf['peaks_pos_0_frac_2'],
@@ -598,22 +601,22 @@ class Dataset(object):
             rf['peaks_pos_5_frac_2']
         ], axis=0)
 
-        features['peak_frac_3'] = np.nanmedian([
-            rf['peaks_pos_0_frac_3'],
-            rf['peaks_pos_1_frac_3'],
-            rf['peaks_pos_2_frac_3'],
-            rf['peaks_pos_3_frac_3'],
-            rf['peaks_pos_4_frac_3'],
-            rf['peaks_pos_5_frac_3']
-        ], axis=0)
+        # features['peak_frac_3'] = np.nanmedian([
+            # rf['peaks_pos_0_frac_3'],
+            # rf['peaks_pos_1_frac_3'],
+            # rf['peaks_pos_2_frac_3'],
+            # rf['peaks_pos_3_frac_3'],
+            # rf['peaks_pos_4_frac_3'],
+            # rf['peaks_pos_5_frac_3']
+        # ], axis=0)
 
-        features['total_s2n'] = (
-            rf['total_s2n_0'] +
-            rf['total_s2n_1'] +
-            rf['total_s2n_2'] +
-            rf['total_s2n_3'] +
-            rf['total_s2n_4'] +
-            rf['total_s2n_5']
+        features['total_s2n'] = np.sqrt(
+            rf['total_s2n_0']**2 +
+            rf['total_s2n_1']**2 +
+            rf['total_s2n_2']**2 +
+            rf['total_s2n_3']**2 +
+            rf['total_s2n_4']**2 +
+            rf['total_s2n_5']**2
         )
 
         all_frac_percentiles = []
@@ -628,20 +631,28 @@ class Dataset(object):
                 )
             all_frac_percentiles.append(np.nanmedian(frac_percentiles, axis=0))
 
-        features['percentile_diff_30_70'] = (
-            all_frac_percentiles[3] - all_frac_percentiles[1])
-        features['percentile_diff_10_90'] = (
-            all_frac_percentiles[4] - all_frac_percentiles[0]
-        )
+        # features['percentile_diff_30_70'] = (
+            # all_frac_percentiles[3] - all_frac_percentiles[1])
+        # features['percentile_diff_10_90'] = (
+            # all_frac_percentiles[4] - all_frac_percentiles[0]
+        # )
+        features['percentile_diff_10_50'] = (
+            all_frac_percentiles[0] - all_frac_percentiles[2])
+        features['percentile_diff_30_50'] = (
+            all_frac_percentiles[1] - all_frac_percentiles[2])
+        features['percentile_diff_70_50'] = (
+            all_frac_percentiles[3] - all_frac_percentiles[2])
+        features['percentile_diff_90_50'] = (
+            all_frac_percentiles[4] - all_frac_percentiles[2])
 
-        frac_abs_diffs = []
-        for band in range(num_passbands):
-            abs_diff = rf['abs_diff_%d' % band]
-            max_flux = rf['max_flux_%d' % band]
-            min_flux = rf['min_flux_%d' % band]
+        # frac_abs_diffs = []
+        # for band in range(num_passbands):
+            # abs_diff = rf['abs_diff_%d' % band]
+            # max_flux = rf['max_flux_%d' % band]
+            # min_flux = rf['min_flux_%d' % band]
 
-            frac_abs_diffs.append(abs_diff / (max_flux - min_flux))
-        features['frac_abs_diff'] = np.nanmedian(frac_abs_diffs, axis=0)
+            # frac_abs_diffs.append(abs_diff / (max_flux - min_flux))
+        # features['frac_abs_diff'] = np.nanmedian(frac_abs_diffs, axis=0)
 
         self.features = features
 
@@ -1849,25 +1860,49 @@ class Dataset(object):
                                                    class_indices):
                 counts[redshift_index, class_index] += 1
 
+            total_counts = np.sum(counts)
             weights = np.zeros(counts.shape)
+
+            # Count how many extragalactic bins are actually populated. This is
+            # used to set the scales so that they roughly match what we have
+            # for the non-redshift-weighted metric. This is done so that we can
+            # use the same hyperparameters. For galactic objects, we don't need
+            # to do antyhing because all of the observations end up in the same
+            # bin. For extragalactic objects, we need to take into account the
+            # fact that the objects are now split up between many different
+            # bins. Get an estimate of how many bins are populated, and apply
+            # that to the data.
+            extgal_bin_counts = 0
 
             for redshift_index in range(len(redshift_bins)):
                 # Calculate the weights for each redshift bin separately.
                 bin_counts = counts[redshift_index]
-                total_bin_counts = np.sum(bin_counts)
 
-                # Add a floor to the counts to prevent absurdly high weights
-                min_counts = 0.01 * total_bin_counts
+                if np.sum(bin_counts) == 0:
+                    weights[redshift_index] = 0.
 
-                bin_counts[bin_counts < min_counts] = min_counts
+                # Add a floor to the counts in each bin to prevent absurdly
+                # high weights for poorly represented classes.
+                # min_counts = 0.001 * total_counts / len(redshift_bins)
+                min_counts = 0.01 * np.sum(bin_counts)
+                # min_counts = 100
 
-                weights[redshift_index] = total_bin_counts / bin_counts
+                empty_mask = bin_counts < min_counts
 
-            # print(weights)
+                bin_counts[empty_mask] = min_counts
+
+                if redshift_index != 0 and np.sum(bin_counts) > 100:
+                    # Count the extragalactic bin counts.
+                    extgal_bin_counts += np.sum(~empty_mask)
+
+                weights[redshift_index] = total_counts / bin_counts
+
+            extgal_mask = ~np.array(list(class_galactic.values()) + [False])
+            extgal_scale = extgal_bin_counts / np.sum(extgal_mask)
+            weights[:, extgal_mask] /= extgal_scale
 
             def calc_weights(mask):
                 meta_data = self.meta_data.loc[mask]
-                features = self.features.loc[mask]
 
                 redshift_indices = np.searchsorted(
                     redshift_bins, meta_data['hostgal_specz']) - 1
@@ -1897,15 +1932,19 @@ class Dataset(object):
                                               3 + target_indices]
                 weights[redshifts == 0] = 1
 
-                scale_weights = np.array([class_weights[i] for i in
+                scale_weights = np.array([kaggle_class_weights[i] for i in
                                           meta_data['target']])
                 full_weights = 16 * weights * scale_weights
 
                 return np.array(full_weights)
+        elif settings['NO_UNKNOWN_WEIGHT']:
+            # Flat class weights except for class 99 which is set to 0.
+            norm_class_weights = {i: no_unknown_class_weights[i] * np.sum(w) /
+                                  w[i] for i in w.index}
         else:
             # Default weights
-            norm_class_weights = {i: class_weights[i] * np.sum(w) / w[i] for i
-                                  in w.index}
+            norm_class_weights = {i: kaggle_class_weights[i] * np.sum(w) / w[i]
+                                  for i in w.index}
 
         if do_fold:
             # Do CV on folds.
@@ -1924,6 +1963,7 @@ class Dataset(object):
                 else:
                     train_weights = train_y.map(norm_class_weights)
                     eval_weights = eval_y.map(norm_class_weights)
+                print(np.max(train_weights))
 
                 classifier = fit_classifier(train_x, train_y, train_weights,
                                             eval_x, eval_y, eval_weights)
@@ -2252,12 +2292,7 @@ def _resample_lightcurve(object_data, gp, new_ddf, original_redshift,
 
     # Update the brightness of the new observations.
     if original_redshift == 0:
-        # UPDATE: I changed the error calculation to set a floor on the noise
-        # at the level of the input. A normal distribution should be fine now
-        # since everything should still be fine for brighter objects.
-        # Adjust brightness for galactic objects. We only want to make things
-        # fainter to avoid issues when the GP is untrustworthy and the errors
-        # blow up when things get brighter.
+        # Adjust brightness for galactic objects.
         adjust_mag = np.random.normal(0, 0.5)
         # adjust_mag = np.random.lognormal(-1, 0.5)
         adjust_scale = 10**(-0.4*adjust_mag)

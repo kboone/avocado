@@ -35,8 +35,10 @@ dataset['class_99'] = 0.
 norm = np.sum(dataset, axis=1)
 dataset = dataset.div(norm, axis=0)
 
-# Galactic predictions -> keep original predictions for now.
-dataset['class_99'][is_gal] = (orig_99_preds / norm)[is_gal]
+# Galactic predictions -> flat predictions
+flat_pred = 0.04
+dataset['class_99'][is_gal] = (flat_pred * norm) / (1 - flat_pred)
+# dataset['class_99'][is_gal] = (orig_99_preds / norm)[is_gal]
 
 pred_99_extgal = 0
 c_vals = {
