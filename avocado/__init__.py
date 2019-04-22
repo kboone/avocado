@@ -1,0 +1,1 @@
+from .astronomical_object import AstronomicalObject
