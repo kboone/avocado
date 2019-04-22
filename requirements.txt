@@ -1,6 +1,5 @@
 astropy
 george
-hdf5
 lightgbm
 matplotlib
 numpy
