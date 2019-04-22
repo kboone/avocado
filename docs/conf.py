@@ -4,16 +4,14 @@
 # list see the documentation:
 # http://www.sphinx-doc.org/en/master/config
 
+import os
+import sys
+
 # -- Path setup --------------------------------------------------------------
 
-# If extensions (or modules to document with autodoc) are in another directory,
-# add these directories to sys.path here. If the directory is relative to the
-# documentation root, use os.path.abspath to make it absolute, like shown here.
-#
-# import os
-# import sys
-# sys.path.insert(0, os.path.abspath('.'))
-
+# Generate api directory if it doesn't already exist
+if not os.path.exists('api'):
+    os.mkdir('api')
 
 # -- Project information -----------------------------------------------------
 
@@ -23,7 +21,6 @@ author = 'Kyle Boone'
 
 # The full version, including alpha/beta/rc tags
 release = '0.1'
-
 
 # -- General configuration ---------------------------------------------------
 
@@ -36,6 +33,11 @@ extensions = [
     'sphinx.ext.mathjax',
     'numpydoc',
 ]
+
+numpydoc_show_class_members = False
+autosummary_generate = ["reference.rst"]
+autoclass_content = "class"
+autodoc_default_flags = ["members", "no-special-members"]
 
 # Add any paths that contain templates here, relative to this directory.
 templates_path = ['_templates']

@@ -1,1 +1,2 @@
-from .astronomical_object import AstronomicalObject
+from .astronomical_object import *
+from .dataset import *
