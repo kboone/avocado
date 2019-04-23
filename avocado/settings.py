@@ -7,7 +7,8 @@ import json
 import os
 
 # Figure out the root directory for our package.
-package_root_directory = os.path.dirname(os.path.abspath(__file__))
+dirname = os.path.dirname
+package_root_directory = dirname(dirname(os.path.abspath(__file__)))
 
 # First, load the default settings
 default_path = os.path.join(package_root_directory, 'avocado_settings.json')

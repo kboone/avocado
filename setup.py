@@ -10,6 +10,5 @@ setup(
     author_email='kboone@berkeley.edu',
     license='BSD',
     packages=['avocado'],
-    data_files=[('avocado', ['avocado/avocado_settings.json'])]
-
+    data_files=[('', ['avocado_settings.json'])]
 )
