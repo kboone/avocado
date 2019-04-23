@@ -44,6 +44,7 @@ class Dataset():
                 observations.groupby('object_id'):
             meta_index = self.metadata.index.get_loc(object_id)
             object_metadata = meta_dicts[meta_index]
+            object_metadata['object_id'] = object_id
             new_object = AstronomicalObject(object_metadata,
                                             object_observations)
             objects.append(new_object)

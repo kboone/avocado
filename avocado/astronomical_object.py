@@ -102,3 +102,7 @@ class AstronomicalObject():
         plt.xlabel('Time (days)')
         plt.ylabel('Flux')
         plt.tight_layout()
+
+    def __repr__(self):
+        return "AstronomicalObject(object_id=%s)" % self.metadata['object_id']
+
