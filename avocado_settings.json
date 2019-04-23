@@ -1,4 +1,9 @@
 {
+    "user_settings_file": "avocado_settings.json",
+    "data_directory": "./data",
+
+    "num_folds": 5,
+
     "RAW_DATA_DIR": "./data",
     "RAW_TRAINING_PATH": "./data/training_set.csv",
     "RAW_TRAINING_METADATA_PATH": "./data/training_set_metadata.csv",

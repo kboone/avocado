@@ -1,4 +1,5 @@
 import pandas as pd
+from astropy.stats import biweight_location
 
 class AstronomicalObject():
     """Class representing an astronomical object.
@@ -8,7 +9,7 @@ class AstronomicalObject():
 
     Parameters
     ----------
-    metadata : dict-like
+    metadata : dict or pandas Series
         Metadata for this object. This is represented using a dict
         internally, and must be able to be cast to a dict. Any keys and
         information are allowed. Various functions assume that the
@@ -24,12 +25,12 @@ class AstronomicalObject():
         - class: The true class label of the object (only available for the
           training data).
 
-    observations : DataFrame
+    observations : pandas.DataFrame
         Observations of the object's light curve. This should be a pandas
         DataFrame with at least the following columns:
 
         - mjd: The MJD date of each observation.
-        - passband: The passband used for the observation.
+        - band: The band used for the observation.
         - flux: The measured flux value of the observation.
         - flux_err: The flux measurement uncertainty of the observation.
     """
@@ -38,67 +39,66 @@ class AstronomicalObject():
         self.metadata = metadata
         self.observations = observations
 
-    def _get_gp_data(self, object_meta, object_data, fix_background=True):
-        times = []
-        fluxes = []
-        bands = []
-        flux_errs = []
-        wavelengths = []
+    @property
+    def bands(self):
+        """Return a list of bands that this object has observations in."""
+        return np.unique(self.observations['band'])
 
-        # The zeropoints were arbitrarily set from the first image. Pick the
-        # 20th percentile of all observations in each channel as a new
-        # zeropoint. This has good performance when there are supernova-like
-        # bursts in the image, even if they are quite wide.
-        # UPDATE: when picking the 20th percentile, observations with just
-        # noise get really messed up. Revert back to the median for now and see
-        # if that helps. It doesn't really matter if supernovae go slightly
-        # negative...
-        # UPDATE 2: most of the objects of interest are short-lived in time.
-        # The only issue with the background occurs when there was flux from
-        # the transient in the reference image. To deal with this, look at the
-        # last observations and see if they are negative (indicating that the
-        # reference has additional flux in it). If so, then update the
-        # background level. Otherwise, leave the background at the reference
-        # level.
-        for passband in range(num_passbands):
-            band_data = object_data[object_data['passband'] == passband]
-            if len(band_data) == 0:
-                # No observations in this band
-                continue
+    def subtract_background(self):
+        """Subtract the background levels from each band.
+
+        The background levels are estimated using a biweight location
+        estimator. This estimator will calculate a robust estimate of the
+        background level for objects that have short-lived light curves, and it
+        will return something like the median flux level for periodic or
+        continuous light curves.
+
+        Returns
+        -------
+        subtracted_observations : pandas.DataFrame
+            A modified version of the observations DataFrame with the
+            background level removed.
+        """
+        subtracted_observations = self.observations.copy()
+
+        for band in self.bands:
+            mask = self.observations['band'] == band
+            band_data = self.observations['mask']
 
             # Use a biweight location to estimate the background
             ref_flux = biweight_location(band_data['flux'])
 
-            for idx, row in band_data.iterrows():
-                times.append(row['mjd'] - start_mjd)
-                flux = row['flux']
-                if fix_background:
-                    flux = flux - ref_flux
-                bands.append(passband)
-                wavelengths.append(band_wavelengths[passband])
-                fluxes.append(flux)
-                flux_errs.append(row['flux_err'])
+            subtracted_observations['flux', mask] -= ref_flux
 
-        times = np.array(times)
-        bands = np.array(bands)
-        wavelengths = np.array(wavelengths)
-        fluxes = np.array(fluxes)
-        flux_errs = np.array(flux_errs)
+        return subtracted_observations
 
-        # Guess the scale based off of the highest signal-to-noise point.
-        # Sometimes the edge bands are pure noise and can have large
-        # insignificant points. Add epsilon to this calculation to avoid divide
-        # by zero errors for model fluxes that have 0 error.
-        scale = fluxes[np.argmax(fluxes / (flux_errs + 1e-5))]
+    def plot_light_curve(self, data_only=False):
+        """Plot the object's light curve"""
+        result = self.predict_gp(*args, **kwargs)
 
-        gp_data = {
-            'meta': object_meta,
-            'times': times,
-            'bands': bands,
-            'scale': scale,
-            'wavelengths': wavelengths,
-            'fluxes': fluxes,
-            'flux_errs': flux_errs,
-        }
+        plt.figure()
 
-        return gp_data
+        for band in range(num_passbands):
+            cut = result['bands'] == band
+            color = band_colors[band]
+            plt.errorbar(result['times'][cut], result['fluxes'][cut],
+                         result['flux_errs'][cut], fmt='o', c=color,
+                         markersize=5, label=band_names[band])
+
+            if data_only:
+                continue
+
+            plt.plot(result['pred_times'], result['pred'][band], c=color)
+
+            if kwargs.get('uncertainties', False):
+                # Show uncertainties with a shaded band
+                pred = result['pred'][band]
+                err = np.sqrt(result['pred_var'][band])
+                plt.fill_between(result['pred_times'], pred-err, pred+err,
+                                 alpha=0.2, color=color)
+
+        plt.legend()
+
+        plt.xlabel('Time (days)')
+        plt.ylabel('Flux')
+        plt.tight_layout()
