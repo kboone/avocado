@@ -1,3 +1,6 @@
+[![Documentation Status](https://readthedocs.org/projects/avocado-classifier/badge/?version=latest)](https://avocado-classifier.readthedocs.io/en/latest/?badge=latest)
+
+
 WARNING: This code is going through a major restructuring right now to prepare
 for a proper release. Use an older version for now, or way for the
 restructuring to be complete.
