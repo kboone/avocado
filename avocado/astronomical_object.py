@@ -9,7 +9,7 @@ class AstronomicalObject():
 
     Parameters
     ----------
-    metadata : dict or pandas Series
+    metadata : dict-like
         Metadata for this object. This is represented using a dict
         internally, and must be able to be cast to a dict. Any keys and
         information are allowed. Various functions assume that the
@@ -36,7 +36,7 @@ class AstronomicalObject():
     """
     def __init__(self, metadata, observations):
         """Create a new AstronomicalObject"""
-        self.metadata = metadata
+        self.metadata = dict(metadata)
         self.observations = observations
 
     @property
