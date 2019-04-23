@@ -53,7 +53,7 @@ def update_plasticc_names(metadata, observations, datsaet_kind):
     if kind == 'training':
         metadata_name_map['hostgal_specz'] = 'redshift'
     else:
-        raise 
+        raise AvocadoException("Unknown dataset kind %s!" % kind)
 
     metadata.rename(metadata_name_map, axis=1, inplace=True)
 
