@@ -40,7 +40,7 @@ class Dataset():
         # Load each astronomical object in the dataset.
         objects = []
         for object_id, object_observations in \
-                observations.groupby('object_id').groups.items():
+                observations.groupby('object_id'):
             object_metadata = metadata.loc[object_id]
             new_object = AstronomicalObject(object_metadata,
                                             object_observations)
