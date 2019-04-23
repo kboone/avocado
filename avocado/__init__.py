@@ -5,3 +5,5 @@ from .astronomical_object import *
 from .dataset import *
 
 from . import plasticc
+
+__all__ = ['Dataset', 'AstronomicalObject']
