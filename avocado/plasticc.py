@@ -5,7 +5,7 @@ import os
 
 from . import Dataset, settings
 
-def update_plasticc_names(metadata, observations):
+def update_plasticc_names(metadata, observations, datsaet_kind):
     """Rename columns in PLAsTiCC tables to follow the avocado naming scheme.
 
     Parameters
@@ -15,6 +15,8 @@ def update_plasticc_names(metadata, observations):
 
     observations : pandas.DataFrame
         Original observations DataFrame
+
+    dataset_kind : str {'trainng'}
 
     Returns
     -------
@@ -40,7 +42,20 @@ def update_plasticc_names(metadata, observations):
     observations['band'] = observations['passband'].map(band_map)
     observations.drop('passband', axis=1, inplace=True)
 
-    metadata.rename({'target': 'class'}, axis=1, inplace=True)
+    metadata_name_map = {
+        'target': 'class',
+        'mjd': 'time',
+        'flux_err': 'flux_error',
+        'hostgal_photoz': 'host_photometric_redshift',
+        'hostgal_photoz_err': 'host_photometric_redshift_error',
+    }
+
+    if kind == 'training':
+        metadata_name_map['hostgal_specz'] = 'redshift'
+    else:
+        raise 
+
+    metadata.rename(metadata_name_map, axis=1, inplace=True)
 
     return metadata, observations
 
