@@ -3,7 +3,7 @@ import numpy as np
 from sklearn.model_selection import StratifiedKFold
 
 from .astronomical_object import AstronomicalObject
-from .logging import logger
+from .utils import logger
 from .settings import settings
 
 class Dataset():

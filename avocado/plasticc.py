@@ -3,9 +3,10 @@
 import pandas as pd
 import os
 
-from . import Dataset, settings
+from .dataset import Dataset
+from .utils import settings, AvocadoException
 
-def update_plasticc_names(metadata, observations, datsaet_kind):
+def update_plasticc_names(metadata, observations, dataset_kind):
     """Rename columns in PLAsTiCC tables to follow the avocado naming scheme.
 
     Parameters
@@ -16,7 +17,7 @@ def update_plasticc_names(metadata, observations, datsaet_kind):
     observations : pandas.DataFrame
         Original observations DataFrame
 
-    dataset_kind : str {'trainng'}
+    dataset_kind : str {'training'}
 
     Returns
     -------
@@ -46,16 +47,15 @@ def update_plasticc_names(metadata, observations, datsaet_kind):
         'target': 'class',
         'mjd': 'time',
         'flux_err': 'flux_error',
+        'hostgal_specz': 'host_spectroscopic_redshift',
         'hostgal_photoz': 'host_photometric_redshift',
         'hostgal_photoz_err': 'host_photometric_redshift_error',
     }
 
-    if kind == 'training':
-        metadata_name_map['hostgal_specz'] = 'redshift'
-    else:
-        raise AvocadoException("Unknown dataset kind %s!" % kind)
-
     metadata.rename(metadata_name_map, axis=1, inplace=True)
+
+    if dataset_kind == 'training':
+        metadata['redshift'] = metadata['host_spectroscopic_redshift']
 
     return metadata, observations
 
@@ -75,7 +75,8 @@ def load_training_set():
     metadata_path = os.path.join(data_directory, 'training_set_metadata.csv')
     metadata = pd.read_csv(metadata_path)
 
-    metadata, observations = update_plasticc_names(metadata, observations)
+    metadata, observations = update_plasticc_names(metadata, observations,
+                                                   'training')
 
     # Create a Dataset object
     dataset = Dataset('plasticc_trainng', metadata, observations)
