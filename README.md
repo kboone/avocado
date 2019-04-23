@@ -2,7 +2,7 @@
 
 
 WARNING: This code is going through a major restructuring right now to prepare
-for a proper release. Use an older version for now, or way for the
+for a proper release. Use an older version for now, or wait for the
 restructuring to be complete.
 
 # Kyle Boone's solution to the 2018 Kaggle PLAsTiCC challenge.
