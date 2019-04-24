@@ -30,6 +30,20 @@ def update_plasticc_names(metadata, observations, dataset_kind):
         naming scheme.
     """
 
+    # Rename columns in the metadata table to match the avocado standard.
+    metadata_name_map = {
+        'target': 'class',
+        'hostgal_specz': 'host_spectroscopic_redshift',
+        'hostgal_photoz': 'host_photometric_redshift',
+        'hostgal_photoz_err': 'host_photometric_redshift_error',
+    }
+    metadata.rename(metadata_name_map, axis=1, inplace=True)
+
+    # The true redshift is the host spectroscopic redshift for the PLAsTiCC
+    # training set.
+    if dataset_kind == 'training':
+        metadata['redshift'] = metadata['host_spectroscopic_redshift']
+
     # Replace the passband number with a string representing the LSST band.
     band_map = {
         0: 'lsstu',
@@ -43,19 +57,12 @@ def update_plasticc_names(metadata, observations, dataset_kind):
     observations['band'] = observations['passband'].map(band_map)
     observations.drop('passband', axis=1, inplace=True)
 
-    metadata_name_map = {
-        'target': 'class',
+    # Rename columns in the observations table to match the avocado standard.
+    observations_name_map = {
         'mjd': 'time',
         'flux_err': 'flux_error',
-        'hostgal_specz': 'host_spectroscopic_redshift',
-        'hostgal_photoz': 'host_photometric_redshift',
-        'hostgal_photoz_err': 'host_photometric_redshift_error',
     }
-
-    metadata.rename(metadata_name_map, axis=1, inplace=True)
-
-    if dataset_kind == 'training':
-        metadata['redshift'] = metadata['host_spectroscopic_redshift']
+    observations.rename(observations_name_map, axis=1, inplace=True)
 
     return metadata, observations
 

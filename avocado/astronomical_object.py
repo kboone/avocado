@@ -1,5 +1,12 @@
-import pandas as pd
 from astropy.stats import biweight_location
+from functools import partial
+import george
+from george import kernels
+import numpy as np
+import pandas as pd
+from scipy.optimize import minimize
+
+from .instruments import band_central_wavelengths
 
 class AstronomicalObject():
     """Class representing an astronomical object.
@@ -42,6 +49,9 @@ class AstronomicalObject():
         self.metadata = dict(metadata)
         self.observations = observations
 
+    def __repr__(self):
+        return "AstronomicalObject(object_id=%s)" % self.metadata['object_id']
+
     @property
     def bands(self):
         """Return a list of bands that this object has observations in."""
@@ -66,66 +76,65 @@ class AstronomicalObject():
 
         for band in self.bands:
             mask = self.observations['band'] == band
-            band_data = self.observations['mask']
+            band_data = self.observations[mask]
 
             # Use a biweight location to estimate the background
             ref_flux = biweight_location(band_data['flux'])
 
-            subtracted_observations['flux', mask] -= ref_flux
+            subtracted_observations.loc[mask, 'flux'] -= ref_flux
 
         return subtracted_observations
 
-    def plot_light_curve(self, data_only=False):
-        """Plot the object's light curve"""
-        result = self.predict_gp(*args, **kwargs)
+    def preprocess_observations(self, subtract_background=True):
+        """Apply preprocessing to the observations.
 
-        plt.figure()
+        This function is intended to be used to transform the raw observations
+        table into one that can actually be used for classification. For now,
+        all that this step does is apply background subtraction.
+        
+        Parameters
+        ----------
+        subtract_background : bool (optional)
+            If True (the default), a background subtraction routine is applied
+            to the lightcurve before fitting the GP. Otherwise, the flux values
+            are used as-is.
 
-        for band in range(num_passbands):
-            cut = result['bands'] == band
-            color = band_colors[band]
-            plt.errorbar(result['times'][cut], result['fluxes'][cut],
-                         result['flux_errs'][cut], fmt='o', c=color,
-                         markersize=5, label=band_names[band])
+        Returns
+        -------
+        preprocessed_observations : pandas.DataFrame
+            The preprocessed observations that can be used for further
+            analyses.
+        """
+        if subtract_background:
+            preprocessed_observations = self.subtract_background()
+        else:
+            preprocessed_observations = self.observations
 
-            if data_only:
-                continue
+        return preprocessed_observations
 
-            plt.plot(result['pred_times'], result['pred'][band], c=color)
-
-            if kwargs.get('uncertainties', False):
-                # Show uncertainties with a shaded band
-                pred = result['pred'][band]
-                err = np.sqrt(result['pred_var'][band])
-                plt.fill_between(result['pred_times'], pred-err, pred+err,
-                                 alpha=0.2, color=color)
-
-        plt.legend()
-
-        plt.xlabel('Time (days)')
-        plt.ylabel('Flux')
-        plt.tight_layout()
-
-    def __repr__(self):
-        return "AstronomicalObject(object_id=%s)" % self.metadata['object_id']
-
-    def fit_gp(self, subtract_background=True, fix_scale=False, verbose=False,
-               start_length_scale=20.):
+    def fit_gaussian_process(self, subtract_background=True, fix_scale=False,
+                             verbose=False, guess_length_scale=20.,
+                             **preprocessing_kwargs):
         """Fit a Gaussian Process model to the light curve.
+
+        We use a 2-dimensional Matern kernel to model the transient. The kernel
+        width in the wavelength direction is fixed. We fit for the kernel width
+        in the time direction as different transients evolve on very different
+        time scales.
 
         Parameters
         ----------
-        subtract_background : bool
-            If True, a background subtraction routine is applied to the
-            lightcurve before fitting the GP. Otherwise, the flux values are
-            used as-is.
-        fix_scale : bool
-            If True, the scale is fixed to an initial estimate. If False, the
-            scale is a free fit parameter (default).
-        verbose : bool
+        fix_scale : bool (optional)
+            If True, the scale is fixed to an initial estimate. If False
+            (default), the scale is a free fit parameter.
+        verbose : bool (optional)
             If True, output additional debugging information.
-        start_length_scale : float
-            The initial length scale to use for the fit.
+        start_length_scale : float (optional)
+            The initial length scale to use for the fit. The default is 20
+            days.
+        preprocessing_kwargs : kwargs (optional)
+            Additional preprocessing arguments that are passed to
+            `preprocess_observations`.
 
         Returns
         -------
@@ -133,41 +142,49 @@ class AstronomicalObject():
             A Gaussian process conditioned on the object's lightcurve. This is
             a wrapper around the george `predict` method with the object flux
             fixed.
-        gp_data : dict
+        gp_observations : pandas.DataFrame
+            The processed observations that the GP was fit to. This could have
+            effects such as background subtraction applied to it.
+        gp_fit_parameters : dict
             A dictionary containing all of the information needed to build the
             Gaussian process.
         """
+        gp_observations = self.preprocess_observations(**preprocessing_kwargs)
 
-        fluxes = self.observations['flux']
-        flux_errs = self.observations['flux_err']
+        fluxes = gp_observations['flux']
+        flux_errors = gp_observations['flux_error']
 
-        scale = fluxes[np.argmax(fluxes / (flux_errs + 1e-5))]
+        wavelengths = gp_observations['band'].map(band_central_wavelengths)
+        times = gp_observations['time']
 
+        # Use the highest signal-to-noise observation to estimate the scale. We
+        # include an error floor so that in the case of very high
+        # signal-to-noise observations we pick the maximum flux value.
+        signal_to_noises = (
+            np.abs(fluxes) /
+            np.sqrt(flux_errors**2 + (1e-2 * np.max(fluxes))**2)
+        )
+        scale = fluxes[np.argmax(signal_to_noises.idxmax())]
 
-        # GP kernel. We use a 2-dimensional Matern kernel to model the
-        # transient. The kernel amplitude is fixed to a fraction of the maximum
-        # value in the data, and the kernel width in the wavelength direction
-        # is also fixed. We fit for the kernel width in the time direction as
-        # different transients evolve on very different time scales.
-        kernel = ((0.2*gp_data['scale'])**2 *
-                  kernels.Matern32Kernel([guess_length_scale**2, 6000**2],
-                                         ndim=2))
+        kernel = (
+            (0.2 * scale)**2 *
+            kernels.Matern32Kernel([guess_length_scale**2, 6000**2], ndim=2)
+        )
 
-        # print(kernel.get_parameter_names())
         if fix_scale:
             kernel.freeze_parameter('k1:log_constant')
         kernel.freeze_parameter('k2:metric:log_M_1_1')
 
         gp = george.GP(kernel)
 
+        guess_parameters = gp.get_parameter_vector()
+
         if verbose:
             print(kernel.get_parameter_dict())
 
-        x_data = np.vstack([gp_data['times'], gp_data['wavelengths']]).T
+        x_data = np.vstack([times, wavelengths]).T
 
-        gp.compute(x_data, gp_data['flux_errs'])
-
-        fluxes = gp_data['fluxes']
+        gp.compute(x_data, flux_errors)
 
         def neg_ln_like(p):
             gp.set_parameter_vector(p)
@@ -177,8 +194,6 @@ class AstronomicalObject():
             gp.set_parameter_vector(p)
             return -gp.grad_log_likelihood(fluxes)
 
-        # print(np.exp(gp.get_parameter_vector()))
-
         bounds = [(0, np.log(1000**2))]
         if not fix_scale:
             bounds = [(-30, 30)] + bounds
@@ -187,30 +202,23 @@ class AstronomicalObject():
             neg_ln_like,
             gp.get_parameter_vector(),
             jac=grad_neg_ln_like,
-            # bounds=[(-30, 30), (0, 10), (0, 5)],
-            # bounds=[(0, 10), (0, 5)],
             bounds=bounds,
-            # bounds=[(-30, 30), (0, np.log(1000**2))],
-            # options={'ftol': 1e-4}
         )
 
-        if not fit_result.success:
-            print("GP Fit failed!")
-
-        # print(-gp.log_likelihood(fluxes))
-        # print(np.exp(fit_result.x))
-
-        gp.set_parameter_vector(fit_result.x)
+        if fit_result.success:
+            gp.set_parameter_vector(fit_result.x)
+        else:
+            # Fit failed. Print out a warning, and use the initial guesses for
+            # fit parameters. This only really seems to happen for objects
+            # where the lightcurve is almost entirely noise.
+            logger.warn("GP fit failed for %s! Using guessed GP parameters.")
+            gp.set_parameter_vector(guess_parameters)
 
         if verbose:
             print(fit_result)
             print(kernel.get_parameter_dict())
 
-        # Add results of the GP fit to the gp_data dictionary.
-        gp_data['fit_parameters'] = fit_result.x
+        # Return the Gaussian process and associated data.
+        gaussian_process = partial(gp.predict, fluxes)
 
-        # Build a GP function that is preconditioned on the known data.
-        cond_gp = partial(gp.predict, gp_data['fluxes'])
-
-        return cond_gp, gp_data
-
+        return gaussian_process, gp_observations, fit_result.x
