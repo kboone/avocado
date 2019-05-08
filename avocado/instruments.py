@@ -12,3 +12,13 @@ band_central_wavelengths = {
     'lsstz': 8691.,
     'lssty': 9710.,
 }
+
+# Colors for plotting
+band_colors = {
+    'lsstu': 'C6',
+    'lsstg': 'C4',
+    'lsstr': 'C0',
+    'lssti': 'C2',
+    'lsstz': 'C3',
+    'lssty': 'goldenrod',
+}
