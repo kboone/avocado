@@ -32,7 +32,7 @@ def update_plasticc_names(metadata, observations, dataset_kind):
 
     # Rename columns in the metadata table to match the avocado standard.
     metadata_name_map = {
-        'target': 'class',
+        'target': 'category',
         'hostgal_specz': 'host_spectroscopic_redshift',
         'hostgal_photoz': 'host_photometric_redshift',
         'hostgal_photoz_err': 'host_photometric_redshift_error',

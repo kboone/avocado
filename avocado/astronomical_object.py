@@ -34,7 +34,7 @@ class AstronomicalObject():
         For training data objects, the following keys are assumed to exist in
         the metadata:
         - redshift: The true redshift of the object.
-        - class: The true class label of the object.
+        - category: The true category label of the object.
 
     observations : pandas.DataFrame
         Observations of the object's light curve. This should be a pandas
@@ -118,9 +118,8 @@ class AstronomicalObject():
 
         return preprocessed_observations
 
-    def fit_gaussian_process(self, subtract_background=True, fix_scale=False,
-                             verbose=False, guess_length_scale=20.,
-                             **preprocessing_kwargs):
+    def fit_gaussian_process(self, fix_scale=False, verbose=False,
+                             guess_length_scale=20., **preprocessing_kwargs):
         """Fit a Gaussian Process model to the light curve.
 
         We use a 2-dimensional Matern kernel to model the transient. The kernel
