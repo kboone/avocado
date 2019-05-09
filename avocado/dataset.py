@@ -173,7 +173,7 @@ class Dataset():
         This requires the ipywidgets package to be set up, and has only been
         tested in jupyter-lab.
         """
-        from ipywidgets import interact, IntSlider, Dropdown, fixed
+        from ipywidgets import interact, IntSlider, Dropdown
 
         categories = {'' : None}
         for category in np.unique(self.metadata['category']):
