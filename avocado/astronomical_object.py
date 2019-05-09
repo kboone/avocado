@@ -231,7 +231,7 @@ class AstronomicalObject():
         set of times.
 
         Parameters
-        ----------
+        ==========
         bands : list(str)
             bands to predict the Gaussian process in.
         times : list or numpy.array of floats
@@ -248,8 +248,8 @@ class AstronomicalObject():
         gp_kwargs : kwargs (optional)
             Additional arguments that are passed to `fit_gaussian_process`.
 
-        Returns:
-        --------
+        Returns
+        =======
         predictions : numpy.array
             A 2-dimensional array with shape (len(bands), len(times))
             containing the Gaussian process mean flux predictions.
