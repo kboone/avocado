@@ -33,16 +33,16 @@ def update_plasticc_names(metadata, observations, dataset_kind):
     # Rename columns in the metadata table to match the avocado standard.
     metadata_name_map = {
         'target': 'category',
-        'hostgal_specz': 'host_spectroscopic_redshift',
-        'hostgal_photoz': 'host_photometric_redshift',
-        'hostgal_photoz_err': 'host_photometric_redshift_error',
+        'hostgal_photoz_err': 'host_photoz_error',
+        'hostgal_photoz': 'host_photoz',
+        'hostgal_specz': 'host_specz',
     }
     metadata.rename(metadata_name_map, axis=1, inplace=True)
 
     # The true redshift is the host spectroscopic redshift for the PLAsTiCC
     # training set.
     if dataset_kind == 'training':
-        metadata['redshift'] = metadata['host_spectroscopic_redshift']
+        metadata['redshift'] = metadata['host_specz']
 
     # Replace the passband number with a string representing the LSST band.
     band_map = {

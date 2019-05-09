@@ -24,12 +24,10 @@ class AstronomicalObject():
         following keys exist in the metadata:
 
         - object_id: A unique ID for the object.
-        - host_photometric_redshift: The photometric redshift of the object's
-          host galaxy.
-        - host_photometric_redshift_error: The error on the photometric
-          redshift of the object's host galaxy.
-        - host_spectroscopic_redshift: The spectroscopic redshift of the
+        - host_photoz: The photometric redshift of the object's host galaxy.
+        - host_photoz_error: The error on the photometric redshift of the
           object's host galaxy.
+        - host_specz: The spectroscopic redshift of the object's host galaxy.
 
         For training data objects, the following keys are assumed to exist in
         the metadata:
@@ -288,7 +286,7 @@ class AstronomicalObject():
         else:
             return predictions
 
-    def plot_light_curve(self, show_gp=True, **kwargs):
+    def plot_light_curve(self, show_gp=True, verbose=False, **kwargs):
         """Plot the object's light curve
 
         Parameters
@@ -296,14 +294,20 @@ class AstronomicalObject():
         show_gp : bool (optional)
             If True (default), the Gaussian process prediction is plotted along
             with the raw data.
+        verbose : bool (optional)
+            If True, print detailed information about the light curve and GP
+            fit.
         kwargs : kwargs (optional)
             Additional arguments. If show_gp is True, these are passed to
             `fit_gaussian_process`. Otherwise, these are passed to
             `preprocess_observations`.
         """
+        if verbose:
+            self.print_meta()
+
         if show_gp:
             gp, observations, gp_fit_parameters = \
-                self.fit_gaussian_process(**kwargs)
+                self.fit_gaussian_process(verbose=verbose, **kwargs)
         else:
             observations = self.preprocess_observations(**kwargs)
 
@@ -352,3 +356,19 @@ class AstronomicalObject():
         plt.ylabel('Flux')
         plt.tight_layout()
         plt.xlim(min_time, max_time)
+
+    def print_meta(self):
+        """Print out the object's metadata in a nice format."""
+        # Try to print out specific keys in a nice order. If these keys aren't
+        # available, then we skip them. The rest of the keys are printed out in
+        # a random order afterwards.
+        ordered_keys = ['object_id', 'category', 'fold', 'redshift',
+                        'host_specz', 'host_photoz', 'host_photoz_error']
+        for key in ordered_keys:
+            if key in self.metadata:
+                print("%20s: %s" % (key, self.metadata[key]))
+
+        for key, value in self.metadata.items():
+            if key in ordered_keys:
+                continue
+            print("%20s: %s" % (key, value))

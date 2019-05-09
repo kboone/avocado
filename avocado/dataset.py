@@ -166,3 +166,33 @@ class Dataset():
         """
         target_object, plot_kwargs = self._get_object(*args, **kwargs)
         target_object.plot_light_curve(**plot_kwargs)
+
+    def plot_interactive(self):
+        """Make an interactive plot of the light curves in the dataset.
+
+        This requires the ipywidgets package to be set up, and has only been
+        tested in jupyter-lab.
+        """
+        from ipywidgets import interact, IntSlider, Dropdown, fixed
+
+        categories = {'' : None}
+        for category in np.unique(self.metadata['category']):
+            categories[category] = category
+
+        idx_widget = IntSlider(min=0, max=1)
+        category_widget = Dropdown(options=categories, index=0)
+
+        def update_idx_range(*args):
+            if category_widget.value is None:
+                idx_widget.max = len(self.metadata) - 1
+            else:
+                idx_widget.max = np.sum(self.metadata['category'] ==
+                                        category_widget.value) - 1
+
+        category_widget.observe(update_idx_range, 'value')
+
+        update_idx_range()
+
+        interact(self.plot_light_curve, index=idx_widget,
+                 category=category_widget, show_gp=True, uncertainties=True,
+                 verbose=False, subtract_background=True)
