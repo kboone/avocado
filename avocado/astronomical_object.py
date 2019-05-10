@@ -24,6 +24,8 @@ class AstronomicalObject():
         following keys exist in the metadata:
 
         - object_id: A unique ID for the object.
+        - galactic: Whether or not the object is in the Milky Way galaxy or
+          not.
         - host_photoz: The photometric redshift of the object's host galaxy.
         - host_photoz_error: The error on the photometric redshift of the
           object's host galaxy.
@@ -47,6 +49,8 @@ class AstronomicalObject():
         """Create a new AstronomicalObject"""
         self.metadata = dict(metadata)
         self.observations = observations
+
+        self._default_gaussian_process = None
 
     def __repr__(self):
         return "AstronomicalObject(object_id=%s)" % self.metadata['object_id']
@@ -225,6 +229,19 @@ class AstronomicalObject():
 
         return gaussian_process, gp_observations, fit_result.x
 
+    def get_default_gaussian_process(self):
+        """Get the default Gaussian Process.
+
+        This method calls fit_gaussian_process with the default arguments and
+        caches its output so that multiple calls only require fitting the GP a
+        single time.
+        """
+        if self._default_gaussian_process is None:
+            gaussian_process, _, _ = self.fit_gaussian_process()
+            self._default_gaussian_process = gaussian_process
+
+        return self._default_gaussian_process
+
     def predict_gaussian_process(self, bands, times, uncertainties=True,
                                  fitted_gp=None, **gp_kwargs):
         """Predict the Gaussian process in a given set of bands and at a given
@@ -362,8 +379,9 @@ class AstronomicalObject():
         # Try to print out specific keys in a nice order. If these keys aren't
         # available, then we skip them. The rest of the keys are printed out in
         # a random order afterwards.
-        ordered_keys = ['object_id', 'category', 'fold', 'redshift',
-                        'host_specz', 'host_photoz', 'host_photoz_error']
+        ordered_keys = ['object_id', 'category', 'galactic', 'fold',
+                        'redshift', 'host_specz', 'host_photoz',
+                        'host_photoz_error']
         for key in ordered_keys:
             if key in self.metadata:
                 print("%20s: %s" % (key, self.metadata[key]))

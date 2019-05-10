@@ -37,19 +37,22 @@ class Dataset():
         if 'category' in self.metadata:
             self.label_folds()
 
-        # Load each astronomical object in the dataset.
-        objects = []
-        meta_dicts = self.metadata.to_dict('records')
-        for object_id, object_observations in \
-                observations.groupby('object_id'):
-            meta_index = self.metadata.index.get_loc(object_id)
-            object_metadata = meta_dicts[meta_index]
-            object_metadata['object_id'] = object_id
-            new_object = AstronomicalObject(object_metadata,
-                                            object_observations)
-            objects.append(new_object)
+        if observations is None:
+            self.objects = None
+        else:
+            # Load each astronomical object in the dataset.
+            objects = []
+            meta_dicts = self.metadata.to_dict('records')
+            for object_id, object_observations in \
+                    observations.groupby('object_id'):
+                meta_index = self.metadata.index.get_loc(object_id)
+                object_metadata = meta_dicts[meta_index]
+                object_metadata['object_id'] = object_id
+                new_object = AstronomicalObject(object_metadata,
+                                                object_observations)
+                objects.append(new_object)
 
-        self.objects = np.array(objects)
+            self.objects = np.array(objects)
 
     def label_folds(self):
         """Separate the dataset into groups for k-folding
