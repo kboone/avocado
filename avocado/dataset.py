@@ -28,7 +28,10 @@ class Dataset():
 
         # Use object_id as the index
         metadata = metadata.set_index('object_id')
-        metadata.sort_index(inplace=True)
+        metadata.index = metadata.index.astype(str)
+
+        if observations is not None:
+            observations['object_id'] = observations['object_id'].astype(str)
 
         self.name = name
         self.metadata = metadata
@@ -41,7 +44,8 @@ class Dataset():
             self.objects = None
         else:
             # Load each astronomical object in the dataset.
-            objects = []
+            self.objects = np.zeros(len(self.metadata), dtype=object)
+            self.objects[:] = None
             meta_dicts = self.metadata.to_dict('records')
             for object_id, object_observations in \
                     observations.groupby('object_id'):
@@ -50,9 +54,8 @@ class Dataset():
                 object_metadata['object_id'] = object_id
                 new_object = AstronomicalObject(object_metadata,
                                                 object_observations)
-                objects.append(new_object)
 
-            self.objects = np.array(objects)
+                self.objects[meta_index] = new_object
 
     def label_folds(self):
         """Separate the dataset into groups for k-folding
@@ -102,7 +105,7 @@ class Dataset():
         category : int or str (optional)
             Filter for objects of a specific category. If this is specified,
             then index must also be specified.
-        object_id : hashable (optional)
+        object_id : str (optional)
             Retrieve an object with this specific object_id. If index or
             category is specified, then object_id cannot also be specified.
 
@@ -135,7 +138,7 @@ class Dataset():
 
         if object_id is not None:
             try:
-                index = self.metadata.index.get_loc(object_id)
+                index = self.metadata.index.get_loc(str(object_id))
             except KeyError:
                 raise AvocadoException(
                     base_error + "No object with object_id=%s" % object_id

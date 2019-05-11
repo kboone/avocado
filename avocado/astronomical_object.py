@@ -23,7 +23,8 @@ class AstronomicalObject():
         information are allowed. Various functions assume that the
         following keys exist in the metadata:
 
-        - object_id: A unique ID for the object.
+        - object_id: A unique ID for the object. This will be stored as a
+          string internally.
         - galactic: Whether or not the object is in the Milky Way galaxy or
           not.
         - host_photoz: The photometric redshift of the object's host galaxy.

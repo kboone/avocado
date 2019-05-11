@@ -44,6 +44,9 @@ def update_plasticc_names(dataset_kind, metadata, observations=None):
     }
     metadata.rename(metadata_name_map, axis=1, inplace=True)
 
+    # Convert the ddf flag to a boolean
+    metadata['ddf'] = metadata['ddf'].astype(bool)
+
     # The true redshift is the host spectroscopic redshift for the PLAsTiCC
     # training set.
     if dataset_kind == 'training':

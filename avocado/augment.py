@@ -1,3 +1,6 @@
+import numpy as np
+import string
+
 class Augmentor():
     """Class used to augment a dataset.
 
@@ -38,3 +41,32 @@ class Augmentor():
             The augmented metadata
         """
         return NotImplementedError
+
+    def augment_object(self, reference_object):
+        """Generate an augmented version of an object.
+
+        Parameters
+        ==========
+        reference_object : :class:`AstronomicalObject`
+            The object to use as a reference for the augmentation.
+
+        Returns
+        =======
+        augmented_object : :class:`AstronomicalObject`
+            The augmented object.
+        """
+        # Create a new object id for the augmented object. We choose a random
+        # string to add on to the end of the original object id that is very
+        # unlikely to have collisions.
+        ref_object_id = reference_object.metadata['object_id']
+        random_str = ''.join(np.random.choice(list(string.ascii_letters), 10))
+        new_object_id = '%s_aug_%s' % (ref_object_id, random_str)
+
+        # Augment the metadata. This is survey specific, so this must be
+        # implemented in subclasses.
+        augmented_metadata = self.augment_metadata(reference_object)
+        augmented_metadata['object_id'] = new_object_id
+        augmented_metadata['reference_object_id'] = ref_object_id
+
+        # Test
+        return augmented_metadata
