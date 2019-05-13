@@ -14,7 +14,7 @@ band_central_wavelengths = {
 }
 
 # Colors for plotting
-band_colors = {
+band_plot_colors = {
     'lsstu': 'C6',
     'lsstg': 'C4',
     'lsstr': 'C0',

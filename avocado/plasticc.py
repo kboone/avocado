@@ -1,6 +1,5 @@
 """Utility functions to interact with the PLAsTiCC dataset"""
 
-from astropy.cosmology import FlatLambdaCDM
 import numpy as np
 import pandas as pd
 import os
@@ -9,7 +8,6 @@ from .dataset import Dataset
 from .utils import settings, AvocadoException, logger
 
 from .augment import Augmentor
-
 
 def update_plasticc_names(dataset_kind, metadata, observations=None):
     """Rename columns in PLAsTiCC tables to follow the avocado naming scheme.
@@ -138,9 +136,6 @@ class PlasticcAugmentor(Augmentor):
 
         self._test_dataset = None
         self._photoz_reference = None
-
-        # Reverse engineered cosmology used to generate PLAsTiCC dataset
-        self.cosmology = FlatLambdaCDM(H0=70, Om0=0.3, Tcmb0=2.725)
 
         # Load the photo-z model
         self._load_photoz_reference()
@@ -299,7 +294,7 @@ class PlasticcAugmentor(Augmentor):
             augmented_metadata['host_photoz_error'] = aug_photoz_error
             augmented_metadata['distmod'] = aug_distmod
 
-    def augment_metadata(self, reference_object):
+    def _augment_metadata(self, reference_object):
         """Generate new metadata for the augmented object.
 
         This method needs to be implemented in survey-specific subclasses of
@@ -338,3 +333,41 @@ class PlasticcAugmentor(Augmentor):
         augmented_metadata['mwebv'] *= np.random.normal(1, 0.1)
 
         return augmented_metadata
+
+    def _choose_target_observation_count(self, augmented_metadata):
+        """Choose the target number of observations for a new augmented light
+        curve.
+
+        We use a functional form that roughly maps out the number of
+        observations in the PLAsTiCC test dataset for each of the DDF and WFD
+        samples.
+
+        Parameters
+        ==========
+        augmented_metadata : dict
+            The augmented metadata
+
+        Returns
+        =======
+        target_observation_count : int
+            The target number of observations in the new light curve.
+        """
+        if augmented_metadata['ddf']:
+            target_observation_count = int(np.random.normal(330, 30))
+        else:
+            # I estimate the distribution of number of observations in the
+            # WFD regions with a mixture of 3 gaussian distributions.
+            gauss_choice = np.random.choice(3, p=[0.05, 0.4, 0.55])
+            if gauss_choice == 0:
+                mu = 95
+                sigma = 20
+            elif gauss_choice == 1:
+                mu = 115
+                sigma = 8
+            elif gauss_choice == 2:
+                mu = 138
+                sigma = 8
+            target_observation_count = int(
+                np.clip(np.random.normal(mu, sigma), 50, None))
+
+        return target_observation_count
