@@ -1,8 +1,9 @@
 """Utility functions to interact with the PLAsTiCC dataset"""
 
 import numpy as np
-import pandas as pd
 import os
+import pandas as pd
+from scipy.special import erf
 
 from .dataset import Dataset
 from .utils import settings, AvocadoException, logger
@@ -371,3 +372,100 @@ class PlasticcAugmentor(Augmentor):
                 np.clip(np.random.normal(mu, sigma), 50, None))
 
         return target_observation_count
+
+    def _simulate_light_curve_uncertainties(self, observations,
+                                            augmented_metadata):
+        """Simulate the observation-related noise and detections for a light
+        curve.
+
+        For the PLAsTiCC dataset, we estimate the measurement uncertainties for
+        each band with a lognormal distribution for both the WFD and DDF
+        surveys. Those measurement uncertainties are added to the simulated
+        observations.
+
+        Parameters
+        ==========
+        observations : pandas.DataFrame
+            The augmented observations that have been sampled from a Gaussian
+            Process. These observations have model flux uncertainties listed
+            that should be included in the final uncertainties.
+        augmented_metadata : dict
+            The augmented metadata
+
+        Returns
+        =======
+        observations : pandas.DataFrame
+            The observations with uncertainties added.
+        """
+        # Make a copy so that we don't modify the original array.
+        observations = observations.copy()
+
+        if len(observations) == 0:
+            # No data, skip
+            return observations
+
+        if augmented_metadata['ddf']:
+            band_noises = {
+                'lsstu': (0.68, 0.26),
+                'lsstg': (0.25, 0.50),
+                'lsstr': (0.16, 0.36),
+                'lssti': (0.53, 0.27),
+                'lsstz': (0.88, 0.22),
+                'lssty': (1.76, 0.23),
+            }
+        else:
+            band_noises = {
+                'lsstu': (2.34, 0.43),
+                'lsstg': (0.94, 0.41),
+                'lsstr': (1.30, 0.41),
+                'lssti': (1.82, 0.42),
+                'lsstz': (2.56, 0.36),
+                'lssty': (3.33, 0.37),
+            }
+
+        # Calculate the new noise levels using a lognormal distribution for
+        # each band.
+        lognormal_parameters = np.array([band_noises[i] for i in
+                                         observations['band']])
+        add_stds = np.random.lognormal(lognormal_parameters[:, 0],
+                                       lognormal_parameters[:, 1])
+
+        noise_add = np.random.normal(loc=0.0, scale=add_stds)
+        observations['flux'] += noise_add
+        observations['flux_error'] = np.sqrt(
+            observations['flux_error']**2 + add_stds**2
+        )
+
+        return observations
+
+    def _simulate_detection(self, observations, augmented_metadata):
+        """Simulate the detection process for a light curve.
+
+        We model the PLAsTiCC detection probabilities with an error function.
+        I'm not entirely sure why this isn't deterministic. The full light
+        curve is considered to be detected if there are at least 2 individual
+        detected observations.
+
+        Parameters
+        ==========
+        observations : pandas.DataFrame
+            The augmented observations that have been sampled from a Gaussian
+            Process.
+        augmented_metadata : dict
+            The augmented metadata
+
+        Returns
+        =======
+        observations : pandas.DataFrame
+            The observations with the detected flag set.
+        pass_detection : bool
+            Whether or not the full light curve passes the detection thresholds
+            used for the full sample.
+        """
+        s2n = np.abs(observations['flux']) / observations['flux_error']
+        prob_detected = (erf((s2n - 5.5) / 2) + 1) / 2.
+        observations['detected'] = np.random.rand(len(s2n)) < prob_detected
+
+        pass_detection = np.sum(observations['detected']) >= 2
+
+        return observations, pass_detection

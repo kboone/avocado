@@ -4,6 +4,7 @@ import pandas as pd
 import string
 
 from .instruments import band_central_wavelengths
+from .utils import settings
 
 class Augmentor():
     """Class used to augment a dataset.
@@ -25,6 +26,8 @@ class Augmentor():
     These methods are:
     - `_augment_metadata`
     - Either `_choose_sampling_times` or `_choose_target_observation_count`
+    - `_simulate_light_curve_uncertainties`
+    - `_simulate_detection`
 
     Parameters
     ----------
@@ -221,6 +224,58 @@ class Augmentor():
 
         return sampling_times
 
+    def _simulate_light_curve_uncertainties(self, observations,
+                                            augmented_metadata):
+        """Simulate the observation-related noise for a light curve.
+
+        This method needs to be implemented in survey-specific subclasses of
+        this class. It should simulate the observation uncertainties for the
+        light curve.
+
+        Parameters
+        ==========
+        observations : pandas.DataFrame
+            The augmented observations that have been sampled from a Gaussian
+            Process. These observations have model flux uncertainties listed
+            that should be included in the final uncertainties.
+        augmented_metadata : dict
+            The augmented metadata
+
+        Returns
+        =======
+        observations : pandas.DataFrame
+            The observations with uncertainties added.
+        """
+        return NotImplementedError
+
+    def _simulate_detection(self, observations, augmented_metadata):
+        """Simulate the detection process for a light curve.
+
+        This method needs to be implemented in survey-specific subclasses of
+        this class. It should simulate whether each observation is detected as
+        a point-source by the survey and set the "detected" flag in the
+        observations DataFrame. It should also return whether or not the light
+        curve passes a base set of criterion to be included in the sample that
+        this classifier will be applied to.
+
+        Parameters
+        ==========
+        observations : pandas.DataFrame
+            The augmented observations that have been sampled from a Gaussian
+            Process.
+        augmented_metadata : dict
+            The augmented metadata
+
+        Returns
+        =======
+        observations : pandas.DataFrame
+            The observations with the detected flag set.
+        pass_detection : bool
+            Whether or not the full light curve passes the detection thresholds
+            used for the full sample.
+        """
+        return NotImplementedError
+
     def augment_object(self, reference_object):
         """Generate an augmented version of an object.
 
@@ -241,16 +296,16 @@ class Augmentor():
         random_str = ''.join(np.random.choice(list(string.ascii_letters), 10))
         new_object_id = '%s_aug_%s' % (ref_object_id, random_str)
 
-        # Augment the metadata. This is survey specific, so this must be
-        # implemented in subclasses.
+        # Augment the metadata. The details of how this should work is survey
+        # specific, so this must be implemented in subclasses.
         augmented_metadata = self._augment_metadata(reference_object)
         augmented_metadata['object_id'] = new_object_id
         augmented_metadata['reference_object_id'] = ref_object_id
 
         return self._resample_light_curve(reference_object, augmented_metadata)
 
-        # Add noise to the light_curve
-        object_data = _simulate_light_curve_noise(object_model, new_ddf)
+        # Add observation-related uncertainties to the light_curve
+        object_data = _simulate_light_curve_uncertainties(object_model, new_ddf)
 
         # Model the photoz
         if photoz_reference is not None:
@@ -285,53 +340,77 @@ class Augmentor():
         This uses the Gaussian process fit to a light curve to generate new
         simulated observations of that light curve.
 
+        In some cases, the light curve that is generated will be accidentally
+        shifted out of the frame, or otherwise missed. If that is the case, the
+        light curve will automatically be regenerated with the same metadata
+        until it is either detected or until the number of tries has exceeded
+        settings['augment_retries'].
+
         Parameters
         ----------
         reference_object : :class:`AstronomicalObject`
             The object to use as a reference for the augmentation.
         augmented_metadata : dict
             The augmented metadata
+
+        Returns
+        -------
+        augmented_observations : pandas.DataFrame
+            The simulated observations for the augmented object. If the chosen
+            metadata leads to an object that is too faint or otherwise unable
+            to be detected, None will be returned instead.
         """
         # Get the GP. This uses a cache if possible.
         gp = reference_object.get_default_gaussian_process()
 
-        # Figure out where to sample the augmented light curve at.
-        observations = self._choose_sampling_times(reference_object,
-                                                  augmented_metadata)
+        for attempt in range(settings['augment_retries']):
+            # Figure out where to sample the augmented light curve at.
+            observations = self._choose_sampling_times(reference_object,
+                                                      augmented_metadata)
 
-        # Compute the fluxes from the GP at the augmented observation times.
-        new_redshift = augmented_metadata['redshift']
-        reference_redshift = reference_object.metadata['redshift']
-        redshift_scale = (1 + new_redshift) / (1 + reference_redshift)
+            # Compute the fluxes from the GP at the augmented observation
+            # times.
+            new_redshift = augmented_metadata['redshift']
+            reference_redshift = reference_object.metadata['redshift']
+            redshift_scale = (1 + new_redshift) / (1 + reference_redshift)
 
-        new_wavelengths = np.array([band_central_wavelengths[i] for i in
-                                    observations['band']])
-        eval_wavelengths = new_wavelengths / redshift_scale
-        pred_x_data = np.vstack([observations['time'], eval_wavelengths]).T
-        new_fluxes, new_fluxvars = gp(pred_x_data, return_var=True)
+            new_wavelengths = np.array([band_central_wavelengths[i] for i in
+                                        observations['band']])
+            eval_wavelengths = new_wavelengths / redshift_scale
+            pred_x_data = np.vstack([observations['time'], eval_wavelengths]).T
+            new_fluxes, new_fluxvars = gp(pred_x_data, return_var=True)
 
-        observations['flux'] = new_fluxes
-        observations['flux_error'] = np.sqrt(new_fluxvars)
+            observations['flux'] = new_fluxes
+            observations['flux_error'] = np.sqrt(new_fluxvars)
 
-        # Update the brightness of the new observations.
-        if reference_redshift == 0:
-            # Adjust brightness for galactic objects.
-            adjust_mag = np.random.normal(0, 0.5)
-            # adjust_mag = np.random.lognormal(-1, 0.5)
-            adjust_scale = 10**(-0.4*adjust_mag)
-        else:
-            # Adjust brightness for extragalactic objects. We simply follow the
-            # Hubble diagram.
-            delta_distmod = (self.cosmology.distmod(reference_redshift) -
-                             self.cosmology.distmod(new_redshift)).value
-            adjust_scale = 10**(0.4*delta_distmod)
+            # Update the brightness of the new observations.
+            if reference_redshift == 0:
+                # Adjust brightness for galactic objects.
+                adjust_mag = np.random.normal(0, 0.5)
+                # adjust_mag = np.random.lognormal(-1, 0.5)
+                adjust_scale = 10**(-0.4*adjust_mag)
+            else:
+                # Adjust brightness for extragalactic objects. We simply follow
+                # the Hubble diagram.
+                delta_distmod = (self.cosmology.distmod(reference_redshift) -
+                                 self.cosmology.distmod(new_redshift)).value
+                adjust_scale = 10**(0.4*delta_distmod)
 
-        observations['flux'] *= adjust_scale
-        observations['flux_error'] *= adjust_scale
+            observations['flux'] *= adjust_scale
+            observations['flux_error'] *= adjust_scale
 
-        # We have the resampled models! Note that there is no error added in yet,
-        # so we set the detected flags to default values and clean up.
-        observations['detected'] = 1
-        observations.reset_index(inplace=True, drop=True)
+            # Add in light curve noise. This is survey specific and must be
+            # implemented in subclasses.
+            observations = self._simulate_light_curve_uncertainties(
+                observations, augmented_metadata)
 
-        return observations
+            # Simulate detection
+            observations, pass_detection = self._simulate_detection(
+                observations, augmented_metadata)
+
+            # If our light curve passes detection thresholds, we're done!
+            if pass_detection:
+                return observations
+
+        # Failed to generate valid observations.
+        return None

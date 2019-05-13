@@ -4,6 +4,8 @@
 
     "num_folds": 5,
 
+    "augment_retries": 10,
+
     "RAW_DATA_DIR": "./data",
     "RAW_TRAINING_PATH": "./data/training_set.csv",
     "RAW_TRAINING_METADATA_PATH": "./data/training_set_metadata.csv",
