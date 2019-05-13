@@ -171,7 +171,7 @@ class AstronomicalObject():
             np.abs(fluxes) /
             np.sqrt(flux_errors**2 + (1e-2 * np.max(fluxes))**2)
         )
-        scale = fluxes[signal_to_noises.idxmax()]
+        scale = np.abs(fluxes[signal_to_noises.idxmax()])
 
         kernel = (
             (0.2 * scale)**2 *

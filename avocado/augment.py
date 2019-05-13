@@ -223,6 +223,8 @@ class Augmentor():
         )
         sampling_times = sampling_times.drop(drop_indices).copy()
 
+        sampling_times.reset_index(inplace=True, drop=True)
+
         return sampling_times
 
     def _simulate_light_curve_uncertainties(self, observations,
