@@ -13,19 +13,20 @@ class Dataset():
     
     Parameters
     ----------
-    metadata : pandas.DataFrame
-        DataFrame where each row is the metadata for an object in the dataset.
-        See :class:`AstronomicalObject` for details.
-
-    observations : pandas.DataFrame
-        Observations of all of the objects' light curves. See
-        :class:`AstronomicalObject` for details.
-
     name : str
         Name of the dataset. This will be used to determine the filenames of
         various outputs such as computed features and predictions.
+    metadata : pandas.DataFrame
+        DataFrame where each row is the metadata for an object in the dataset.
+        See :class:`AstronomicalObject` for details.
+    observations : pandas.DataFrame
+        Observations of all of the objects' light curves. See
+        :class:`AstronomicalObject` for details.
+    objects : list
+        A list of :class:`AstronomicalObject` instances. Either this or
+        observations can be specified but not both.
     """
-    def __init__(self, name, metadata, observations=None):
+    def __init__(self, name, metadata, observations=None, objects=None):
         """Create a new Dataset from a set of metadata and observations"""
         # Make copies of everything so that we don't mess anything up.
         metadata = metadata.copy()
@@ -36,7 +37,7 @@ class Dataset():
         self.metadata = metadata
 
         if observations is None:
-            self.objects = None
+            self.objects = objects
         else:
             # Load each astronomical object in the dataset.
             self.objects = np.zeros(len(self.metadata), dtype=object)
@@ -53,8 +54,7 @@ class Dataset():
                 self.objects[meta_index] = new_object
 
     @classmethod
-    def load(cls, dataset_name, metadata_only=False, chunk=None,
-             num_chunks=None):
+    def load(cls, name, metadata_only=False, chunk=None, num_chunks=None):
         """Load a dataset that has been saved in HDF5 format in the data
         directory.
 
@@ -66,7 +66,7 @@ class Dataset():
 
         Parameters
         ----------
-        dataset_name : str
+        name : str
             The name of the dataset to load
         metadata_only : bool (optional)
             If False (default), the observations are loaded. Otherwise, only
@@ -84,10 +84,10 @@ class Dataset():
         """
         data_directory = settings['data_directory']
 
-        data_path = os.path.join(data_directory, dataset_name + '.h5')
+        data_path = os.path.join(data_directory, name + '.h5')
 
         if not os.path.exists(data_path):
-            raise AvocadoException("Couldn't find dataset %s!" % dataset_name)
+            raise AvocadoException("Couldn't find dataset %s!" % name)
 
         if chunk is None:
             # Load the full dataset
@@ -144,7 +144,7 @@ class Dataset():
             observations = pd.read_hdf(data_path, 'observations')
 
         # Create a Dataset object
-        dataset = Dataset(dataset_name, metadata, observations)
+        dataset = cls(name, metadata, observations)
 
         # Label folds if we have a full dataset with fold information
         if chunk is None and 'category' in dataset.metadata:
@@ -152,6 +152,30 @@ class Dataset():
 
         return dataset
 
+    @classmethod
+    def from_objects(cls, name, objects):
+        """Load a dataset from a list of AstronomicalObject instances.
+
+        Parameters
+        ----------
+        objects : list
+            A list of AstronomicalObject instances.
+        name : str
+            The name of the dataset.
+
+        Returns
+        -------
+        dataset : :class:`Dataset`
+            The loaded dataset.
+        """
+        # Pull the metadata out of the objects
+        metadata = pd.DataFrame([i.metadata for i in objects])
+        metadata.set_index('object_id', inplace=True)
+
+        # Load the new dataset.
+        dataset = cls(name, metadata, objects=objects)
+
+        return dataset
 
     def label_folds(self):
         """Separate the dataset into groups for k-folding

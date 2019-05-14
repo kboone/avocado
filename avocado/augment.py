@@ -2,8 +2,10 @@ from astropy.cosmology import FlatLambdaCDM
 import numpy as np
 import pandas as pd
 import string
+from tqdm import tqdm
 
 from .astronomical_object import AstronomicalObject
+from .dataset import Dataset
 from .instruments import band_central_wavelengths
 from .utils import settings, logger
 
@@ -283,58 +285,6 @@ class Augmentor():
         """
         return NotImplementedError
 
-    def augment_object(self, reference_object, force_success=True):
-        """Generate an augmented version of an object.
-
-        Parameters
-        ==========
-        reference_object : :class:`AstronomicalObject`
-            The object to use as a reference for the augmentation.
-        force_success : bool
-            If True, then if we fail to generate an augmented light curve for a
-            specific set of augmented parameters, we choose a different set of
-            augmented parameters until we eventually get an augmented light
-            curve. This is useful for debugging/interactive work, but when
-            actually augmenting a dataset there is a massive speed up to
-            ignoring bad light curves without a major change in classification
-            performance.
-
-        Returns
-        =======
-        augmented_object : :class:`AstronomicalObject`
-            The augmented object. If force_success is False, this can be None.
-        """
-        # Create a new object id for the augmented object. We choose a random
-        # string to add on to the end of the original object id that is very
-        # unlikely to have collisions.
-        ref_object_id = reference_object.metadata['object_id']
-        random_str = ''.join(np.random.choice(list(string.ascii_letters), 10))
-        new_object_id = '%s_aug_%s' % (ref_object_id, random_str)
-
-        while True:
-            # Augment the metadata. The details of how this should work is
-            # survey specific, so this must be implemented in subclasses.
-            augmented_metadata = self._augment_metadata(reference_object)
-            augmented_metadata['object_id'] = new_object_id
-            augmented_metadata['reference_object_id'] = ref_object_id
-
-            # Generate an augmented light curve for this augmented metadata.
-            observations = self._resample_light_curve(reference_object,
-                                                      augmented_metadata)
-
-            if observations is not None:
-                # Successfully generated a light curve.
-                augmented_object = AstronomicalObject(augmented_metadata,
-                                                      observations)
-                return augmented_object
-            elif not force_success:
-                # Failed to generate a light curve, and we aren't retrying
-                # until we are successful.
-                return None
-            else:
-                logger.warn("Failed to generate a light curve for redshift "
-                            "%.2f. Retrying." % augmented_metadata['redshift'])
-
     def _resample_light_curve(self, reference_object, augmented_metadata):
         """Resample a light curve as part of the augmenting procedure
 
@@ -419,3 +369,94 @@ class Augmentor():
 
         # Failed to generate valid observations.
         return None
+
+    def augment_object(self, reference_object, force_success=True):
+        """Generate an augmented version of an object.
+
+        Parameters
+        ==========
+        reference_object : :class:`AstronomicalObject`
+            The object to use as a reference for the augmentation.
+        force_success : bool
+            If True, then if we fail to generate an augmented light curve for a
+            specific set of augmented parameters, we choose a different set of
+            augmented parameters until we eventually get an augmented light
+            curve. This is useful for debugging/interactive work, but when
+            actually augmenting a dataset there is a massive speed up to
+            ignoring bad light curves without a major change in classification
+            performance.
+
+        Returns
+        =======
+        augmented_object : :class:`AstronomicalObject`
+            The augmented object. If force_success is False, this can be None.
+        """
+        # Create a new object id for the augmented object. We choose a random
+        # string to add on to the end of the original object id that is very
+        # unlikely to have collisions.
+        ref_object_id = reference_object.metadata['object_id']
+        random_str = ''.join(np.random.choice(list(string.ascii_letters), 10))
+        new_object_id = '%s_aug_%s' % (ref_object_id, random_str)
+
+        while True:
+            # Augment the metadata. The details of how this should work is
+            # survey specific, so this must be implemented in subclasses.
+            augmented_metadata = self._augment_metadata(reference_object)
+            augmented_metadata['object_id'] = new_object_id
+            augmented_metadata['reference_object_id'] = ref_object_id
+
+            # Generate an augmented light curve for this augmented metadata.
+            observations = self._resample_light_curve(reference_object,
+                                                      augmented_metadata)
+
+            if observations is not None:
+                # Successfully generated a light curve.
+                augmented_object = AstronomicalObject(augmented_metadata,
+                                                      observations)
+                return augmented_object
+            elif not force_success:
+                # Failed to generate a light curve, and we aren't retrying
+                # until we are successful.
+                return None
+            else:
+                logger.warn("Failed to generate a light curve for redshift "
+                            "%.2f. Retrying." % augmented_metadata['redshift'])
+
+    def augment_dataset(self, dataset, num_augments, tag="augment",
+                        include_reference=True):
+        """Generate augmented versions of all objects in a dataset.
+
+        Parameters
+        ==========
+        dataset : :class:`Dataset`
+            The dataset to use as a reference for the augmentation.
+        num_augments : int
+            The number of times to use each object in the dataset as a
+            reference for augmentation. Note that augmentation sometimes fails,
+            so this is the number of tries, not the number of sucesses.
+        include_reference : bool (optional)
+            If True (default), the reference objects are included in the new
+            augmented dataset. Otherwise they are dropped.
+
+        Returns
+        =======
+        augmented_dataset : :class:`Dataset`
+            The augmented dataset.
+        """
+        augmented_objects = []
+
+        for reference_object in tqdm(dataset.objects):
+            if include_reference:
+                augmented_objects.append(reference_object)
+
+            for i in range(num_augments):
+                augmented_object = self.augment_object(reference_object,
+                                                       force_success=False)
+                if augmented_object is not None:
+                    augmented_objects.append(augmented_object)
+
+        new_name = "%s_%s" % (tag, dataset.name)
+
+        augmented_dataset = Dataset.from_objects(new_name, augmented_objects)
+
+        return augmented_dataset
