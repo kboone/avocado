@@ -18,6 +18,10 @@ class Augmentor():
     - For extragalactic observations, adjust the redshift.
     - Add noise.
 
+    When changing the redshift, we use the host_specz measurement as the
+    redshift of the reference object. While in simulations we might know the
+    true redshift, that isn't the case for real experiments.
+
     The augmentor needs to have some reasonable idea of the properties of the
     survey that it is being applied to. If there is a large dataset that the
     classifier will be used on, then that dataset can be used directly to
@@ -153,7 +157,7 @@ class Augmentor():
 
         # If the redshift changed, shift the time of the observations.
         augmented_redshift = augmented_metadata['redshift']
-        reference_redshift = reference_object.metadata['redshift']
+        reference_redshift = reference_object.metadata['host_specz']
         redshift_scale = (1 + augmented_redshift) / (1 + reference_redshift)
 
         if augmented_redshift != reference_redshift:
@@ -370,7 +374,7 @@ class Augmentor():
             # Compute the fluxes from the GP at the augmented observation
             # times.
             new_redshift = augmented_metadata['redshift']
-            reference_redshift = reference_object.metadata['redshift']
+            reference_redshift = reference_object.metadata['host_specz']
             redshift_scale = (1 + new_redshift) / (1 + reference_redshift)
 
             new_wavelengths = np.array([band_central_wavelengths[i] for i in
