@@ -38,6 +38,8 @@ class Augmentor():
         astropy.cosmology.FlatLambdaCDM.
     """
     def __init__(self, **cosmology_kwargs):
+        print("TODO: Update Augmentor to use specz, not truez!")
+
         # Default cosmology to use. This is the one assumed for the PLAsTiCC
         # dataset.
         cosmology_parameters = {

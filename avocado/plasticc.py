@@ -1,133 +1,12 @@
 """Utility functions to interact with the PLAsTiCC dataset"""
 
 import numpy as np
-import os
-import pandas as pd
 from scipy.special import erf
 
 from .dataset import Dataset
 from .utils import settings, AvocadoException, logger
 
 from .augment import Augmentor
-
-def update_plasticc_names(dataset_kind, metadata, observations=None):
-    """Rename columns in PLAsTiCC tables to follow the avocado naming scheme.
-
-    Parameters
-    ----------
-    dataset_kind : str {'training', 'test'}
-
-    metadata : pandas.DataFrame
-        Original metadata
-
-    observations : pandas.DataFrame (optional)
-        Original observations DataFrame
-
-    Returns
-    -------
-    renamed_metadata : pandas.DataFrame
-        metadata DataFrame with renamed columns to follow the avocado
-        naming scheme.
-
-    renamed_observations : pandas.DataFrame
-        observations DataFrame with renamed columns to follow the avocado
-        naming scheme. This is only returned if observations is not None.
-    """
-
-    # Rename columns in the metadata table to match the avocado standard.
-    metadata_name_map = {
-        'target': 'category',
-        'hostgal_photoz_err': 'host_photoz_error',
-        'hostgal_photoz': 'host_photoz',
-        'hostgal_specz': 'host_specz',
-    }
-    metadata.rename(metadata_name_map, axis=1, inplace=True)
-
-    # Convert the ddf flag to a boolean
-    metadata['ddf'] = metadata['ddf'].astype(bool)
-
-    # The true redshift is the host spectroscopic redshift for the PLAsTiCC
-    # training set.
-    if dataset_kind == 'training':
-        metadata['redshift'] = metadata['host_specz']
-
-    # Explicitly set a galactic/extragalactic flag.
-    metadata['galactic'] = metadata['host_photoz'] == 0.
-
-    if observations is None:
-        return metadata
-
-    # Replace the passband number with a string representing the LSST band.
-    band_map = {
-        0: 'lsstu',
-        1: 'lsstg',
-        2: 'lsstr',
-        3: 'lssti',
-        4: 'lsstz',
-        5: 'lssty',
-    }
-
-    observations['band'] = observations['passband'].map(band_map)
-    observations.drop('passband', axis=1, inplace=True)
-
-    # Rename columns in the observations table to match the avocado standard.
-    observations_name_map = {
-        'mjd': 'time',
-        'flux_err': 'flux_error',
-    }
-    observations.rename(observations_name_map, axis=1, inplace=True)
-
-    return metadata, observations
-
-
-def load_plasticc_training():
-    """Load the PLAsTiCC training set.
-    
-    Returns
-    =======
-    training_dataset : :class:`Dataset`
-        The PLAsTiCC training dataset.
-    """
-    data_directory = settings['data_directory']
-
-    observations_path = os.path.join(data_directory, 'training_set.csv')
-    observations = pd.read_csv(observations_path)
-
-    metadata_path = os.path.join(data_directory, 'training_set_metadata.csv')
-    metadata = pd.read_csv(metadata_path)
-
-    metadata, observations = update_plasticc_names('training', metadata,
-                                                   observations)
-
-    # Create a Dataset object
-    dataset = Dataset('plasticc_training', metadata, observations)
-
-    return dataset
-
-
-def load_plasticc_test():
-    """Load the metadata of the full PLAsTiCC test set.
-
-    Only the metadata is loaded, not the individual observations. The
-    individual observations can't all fit in memory at the same time on normal
-    computers.
-
-    Returns
-    =======
-    test_dataset : :class:`Dataset`
-        The PLAsTiCC test dataset (metadata only).
-    """
-    data_directory = settings['data_directory']
-
-    metadata_path = os.path.join(data_directory, 'test_set_metadata.csv')
-    metadata = pd.read_csv(metadata_path)
-
-    metadata = update_plasticc_names('test', metadata)
-
-    # Create a Dataset object
-    dataset = Dataset('plasticc_test', metadata)
-
-    return dataset
 
 
 class PlasticcAugmentor(Augmentor):
@@ -154,7 +33,8 @@ class PlasticcAugmentor(Augmentor):
             The test dataset loaded with metadata only.
         """
         if self._test_dataset is None:
-            self._test_dataset = load_plasticc_test()
+            self._test_dataset = Dataset.load('plasticc_test',
+                                              metadata_only=True)
 
         return self._test_dataset
 

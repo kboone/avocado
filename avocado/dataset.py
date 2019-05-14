@@ -1,4 +1,6 @@
 import numpy as np
+import os
+import pandas as pd
 
 from sklearn.model_selection import StratifiedKFold
 
@@ -56,6 +58,48 @@ class Dataset():
                                                 object_observations)
 
                 self.objects[meta_index] = new_object
+
+    @classmethod
+    def load(cls, dataset_name, metadata_only=False):
+        """Load a dataset that has been saved in HDF5 format in the data
+        directory.
+
+        For an example of how to create such a dataset, see
+        `scripts/download_plasticc.py`.
+
+        Parameters
+        ----------
+        dataset_name : str
+            The name of the dataset to load
+        metadata_only : bool (optional)
+            If False (default), the observations are loaded. Otherwise, only
+            the metadata is loaded. This is useful for very large datasets.
+
+        Returns
+        -------
+        dataset : :class:`Dataset`
+            The loaded dataset.
+        """
+        data_directory = settings['data_directory']
+
+        data_path = os.path.join(data_directory, dataset_name + '.h5')
+        print(data_path)
+
+        if not os.path.exists(data_path):
+            raise AvocadoException("Couldn't find dataset %s!" % dataset_name)
+
+        metadata = pd.read_hdf(data_path, 'metadata') 
+
+        if metadata_only:
+            observations = None
+        else:
+            observations = pd.read_hdf(data_path, 'observations')
+
+        # Create a Dataset object
+        dataset = Dataset(dataset_name, metadata, observations)
+
+        return dataset
+
 
     def label_folds(self):
         """Separate the dataset into groups for k-folding
