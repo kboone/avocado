@@ -5,7 +5,7 @@ import pandas as pd
 from sklearn.model_selection import StratifiedKFold
 
 from .astronomical_object import AstronomicalObject
-from .utils import logger, AvocadoException
+from .utils import logger, AvocadoException, write_dataframes
 from .settings import settings
 
 class Dataset():
@@ -46,12 +46,30 @@ class Dataset():
             for object_id, object_observations in \
                     observations.groupby('object_id'):
                 meta_index = self.metadata.index.get_loc(object_id)
+
+                # Make sure that every object_id only appears once in the
+                # metadata. OTherwise we have a corrupted dataset that we can't
+                # handle.
+                if type(meta_index) != int:
+                    raise AvocadoException(
+                        "Error: found multiple metadata entries for "
+                        "object_id=%s! Can't handle." % object_id
+                    )
+
                 object_metadata = meta_dicts[meta_index]
                 object_metadata['object_id'] = object_id
                 new_object = AstronomicalObject(object_metadata,
                                                 object_observations)
 
                 self.objects[meta_index] = new_object
+
+    @property
+    def path(self):
+        """Return the path to where this dataset should lie on disk"""
+        data_directory = settings['data_directory']
+        data_path = os.path.join(data_directory, self.name + '.h5')
+
+        return data_path
 
     @classmethod
     def load(cls, name, metadata_only=False, chunk=None, num_chunks=None):
@@ -83,7 +101,6 @@ class Dataset():
             The loaded dataset.
         """
         data_directory = settings['data_directory']
-
         data_path = os.path.join(data_directory, name + '.h5')
 
         if not os.path.exists(data_path):
@@ -146,10 +163,6 @@ class Dataset():
         # Create a Dataset object
         dataset = cls(name, metadata, observations)
 
-        # Label folds if we have a full dataset with fold information
-        if chunk is None and 'category' in dataset.metadata:
-            dataset.label_folds()
-
         return dataset
 
     @classmethod
@@ -185,9 +198,10 @@ class Dataset():
 
         The number of folds is set by the `num_folds` settings parameter.
 
-        This needs to happen before augmentation to avoid leakage, so augmented
-        datasets and similar datasets should already have the folds set.
+        If the dataset is an augmented dataset, we ensure that the
+        augmentations of the same object stay in the same fold.
         """
+        print("TODO: KEEP AUGMENTS IN SAME FOLD!")
         if 'category' not in self.metadata:
             logger.warn("Dataset %s does not have labeled categories! Can't "
                         "separate into folds." % self.name)
@@ -322,3 +336,29 @@ class Dataset():
         interact(self.plot_light_curve, index=idx_widget,
                  category=category_widget, show_gp=True, uncertainties=True,
                  verbose=False, subtract_background=True)
+
+    def write(self, **kwargs):
+        """Write the dataset out to disk.
+
+        The dataset will be stored in the data directory using the dataset's
+        name.
+
+        Parameters
+        ----------
+        kwargs : kwargs
+            Additional arguments to be passed to `utils.write_dataframes`
+        """
+        # Pull out the observations from every object
+        observations = []
+        for obj in self.objects:
+            object_observations = obj.observations
+            object_observations['object_id'] = obj.metadata['object_id']
+            observations.append(object_observations)
+        observations = pd.concat(observations, ignore_index=True, sort=False)
+
+        write_dataframes(
+            self.path,
+            [self.metadata, observations],
+            ['metadata', 'observations'],
+            **kwargs
+        )
