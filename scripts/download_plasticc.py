@@ -85,6 +85,8 @@ def update_plasticc_metadata(metadata):
     # Drop useless columns that are just confusing and unnecessary.
     metadata.drop(['target', 'distmod'], axis=1, inplace=True)
 
+    metadata.set_index('object_id', inplace=True)
+
     return metadata
 
 

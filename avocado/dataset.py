@@ -27,20 +27,13 @@ class Dataset():
     """
     def __init__(self, name, metadata, observations=None):
         """Create a new Dataset from a set of metadata and observations"""
-
-        # Use object_id as the index
-        metadata = metadata.set_index('object_id')
-        metadata.index = metadata.index.astype(str)
-
+        # Make copies of everything so that we don't mess anything up.
+        metadata = metadata.copy()
         if observations is not None:
-            observations['object_id'] = observations['object_id'].astype(str)
+            observations = observations.copy()
 
         self.name = name
         self.metadata = metadata
-
-        # Label folds for training datasets
-        if 'category' in self.metadata:
-            self.label_folds()
 
         if observations is None:
             self.objects = None
@@ -60,12 +53,16 @@ class Dataset():
                 self.objects[meta_index] = new_object
 
     @classmethod
-    def load(cls, dataset_name, metadata_only=False):
+    def load(cls, dataset_name, metadata_only=False, chunk=None,
+             num_chunks=None):
         """Load a dataset that has been saved in HDF5 format in the data
         directory.
 
         For an example of how to create such a dataset, see
         `scripts/download_plasticc.py`.
+
+        The dataset can optionally be loaded in chunks. To do this, pass chunk
+        and num_chunks to this method.
 
         Parameters
         ----------
@@ -74,6 +71,11 @@ class Dataset():
         metadata_only : bool (optional)
             If False (default), the observations are loaded. Otherwise, only
             the metadata is loaded. This is useful for very large datasets.
+        chunk : int (optional)
+            If set, load the dataset in chunks. chunk specifies the chunk
+            number to load. This is a zero-based index.
+        num_chunks : int (optional)
+            The total number of chunks to use.
 
         Returns
         -------
@@ -83,16 +85,42 @@ class Dataset():
         data_directory = settings['data_directory']
 
         data_path = os.path.join(data_directory, dataset_name + '.h5')
-        print(data_path)
 
         if not os.path.exists(data_path):
             raise AvocadoException("Couldn't find dataset %s!" % dataset_name)
 
         metadata = pd.read_hdf(data_path, 'metadata') 
 
+        if chunk is not None:
+            if num_chunks is None:
+                raise AvocadoException(
+                    "num_chunks must be specified to load the data in chunks!"
+                )
+
+            # Ensure that the metadata is sorted by the index or we will run
+            # into major issues.
+            metadata.sort_index(inplace=True)
+
+            start_idx = chunk * len(metadata) // num_chunks
+            end_idx = (chunk + 1) * len(metadata) // num_chunks
+
+            start_object_id = metadata.index[start_idx]
+            end_object_id = metadata.index[end_idx]
+
+            metadata = metadata.iloc[start_idx:end_idx]
+
         if metadata_only:
             observations = None
+        elif chunk is not None:
+            # Load only the observations for this chunk
+            match_str = (
+                "(object_id >= '%s') & (object_id < '%s')"
+                % (start_object_id, end_object_id)
+            )
+            observations = pd.read_hdf(data_path, 'observations',
+                                       where=match_str)
         else:
+            # Load all observations
             observations = pd.read_hdf(data_path, 'observations')
 
         # Create a Dataset object
