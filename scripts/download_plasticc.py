@@ -137,7 +137,7 @@ def preprocess_observations(input_path, output_path, chunk_size=10**6):
                       desc="    %s" % os.path.basename(input_path)):
         chunk = update_plasticc_observations(chunk)
         chunk.to_hdf(output_path, 'observations', mode='a', append=True,
-                     data_columns=['object_id'])
+                     format='table', data_columns=['object_id'])
 
 
 if __name__ == "__main__":
@@ -174,7 +174,7 @@ if __name__ == "__main__":
         rawdir, 'plasticc_train_metadata.csv.gz')
     train_metadata = pd.read_csv(raw_train_metadata_path)
     train_metadata = update_plasticc_metadata(train_metadata)
-    train_metadata.to_hdf(train_path, 'metadata', mode='a',
+    train_metadata.to_hdf(train_path, 'metadata', mode='a', format='table',
                           data_columns=['object_id'])
 
     print("Preprocessing test metadata...")
@@ -182,7 +182,7 @@ if __name__ == "__main__":
         rawdir, 'plasticc_test_metadata.csv.gz')
     test_metadata = pd.read_csv(raw_test_metadata_path)
     test_metadata = update_plasticc_metadata(test_metadata)
-    test_metadata.to_hdf(test_path, 'metadata', mode='a',
+    test_metadata.to_hdf(test_path, 'metadata', mode='a', format='table',
                          data_columns=['object_id'])
 
     print("Preprocessing training observations...")

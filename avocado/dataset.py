@@ -89,32 +89,52 @@ class Dataset():
         if not os.path.exists(data_path):
             raise AvocadoException("Couldn't find dataset %s!" % dataset_name)
 
-        metadata = pd.read_hdf(data_path, 'metadata') 
-
-        if chunk is not None:
+        if chunk is None:
+            # Load the full dataset
+            metadata = pd.read_hdf(data_path, 'metadata') 
+        else:
+            # Load only part of the dataset.
             if num_chunks is None:
                 raise AvocadoException(
                     "num_chunks must be specified to load the data in chunks!"
                 )
 
-            # Ensure that the metadata is sorted by the index or we will run
-            # into major issues.
-            metadata.sort_index(inplace=True)
+            if chunk < 0 or chunk > num_chunks:
+                raise AvocadoException(
+                    "chunk must be in range [0, num_chunks)!"
+                )
 
-            start_idx = chunk * len(metadata) // num_chunks
-            end_idx = (chunk + 1) * len(metadata) // num_chunks
 
-            start_object_id = metadata.index[start_idx]
-            end_object_id = metadata.index[end_idx]
+            # Use some pandas tricks to figure out which range of the indexes
+            # we want.
+            with pd.HDFStore(data_path) as store:
+                index = store.get_storer('metadata').table.colindexes['index']
+                num_rows = index.nelements
 
-            metadata = metadata.iloc[start_idx:end_idx]
+                # Inclusive indices
+                start_idx = chunk * num_rows // num_chunks
+                end_idx = (chunk + 1) * num_rows // num_chunks - 1
+
+                # Use the HDF5 index to figure out the object_ids of the rows
+                # that we are interested in.
+                start_object_id = index.read_sorted(start_idx, start_idx+1)[0]
+                end_object_id = index.read_sorted(end_idx, end_idx+1)[0]
+
+                start_object_id = start_object_id.decode().strip()
+                end_object_id = end_object_id.decode().strip()
+
+            match_str = (
+                "(index >= '%s') & (index <= '%s')"
+                % (start_object_id, end_object_id)
+            )
+            metadata = pd.read_hdf(data_path, 'metadata', where=match_str)
 
         if metadata_only:
             observations = None
         elif chunk is not None:
             # Load only the observations for this chunk
             match_str = (
-                "(object_id >= '%s') & (object_id < '%s')"
+                "(object_id >= '%s') & (object_id <= '%s')"
                 % (start_object_id, end_object_id)
             )
             observations = pd.read_hdf(data_path, 'observations',
@@ -125,6 +145,10 @@ class Dataset():
 
         # Create a Dataset object
         dataset = Dataset(dataset_name, metadata, observations)
+
+        # Label folds if we have a full dataset with fold information
+        if chunk is None and 'category' in dataset.metadata:
+            dataset.label_folds()
 
         return dataset
 
