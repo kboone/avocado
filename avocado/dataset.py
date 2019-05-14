@@ -99,7 +99,7 @@ class Dataset():
                     "num_chunks must be specified to load the data in chunks!"
                 )
 
-            if chunk < 0 or chunk > num_chunks:
+            if chunk < 0 or chunk >= num_chunks:
                 raise AvocadoException(
                     "chunk must be in range [0, num_chunks)!"
                 )
