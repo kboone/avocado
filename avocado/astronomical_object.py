@@ -8,6 +8,7 @@ import pandas as pd
 from scipy.optimize import minimize
 
 from .instruments import band_central_wavelengths, band_plot_colors
+from .utils import logger
 
 class AstronomicalObject():
     """Class representing an astronomical object.
@@ -137,7 +138,7 @@ class AstronomicalObject():
             (default), the scale is a free fit parameter.
         verbose : bool (optional)
             If True, output additional debugging information.
-        start_length_scale : float (optional)
+        guess_length_scale : float (optional)
             The initial length scale to use for the fit. The default is 20
             days.
         preprocessing_kwargs : kwargs (optional)
@@ -174,7 +175,7 @@ class AstronomicalObject():
         scale = np.abs(fluxes[signal_to_noises.idxmax()])
 
         kernel = (
-            (0.2 * scale)**2 *
+            (0.5 * scale)**2 *
             kernels.Matern32Kernel([guess_length_scale**2, 6000**2], ndim=2)
         )
 
@@ -218,7 +219,8 @@ class AstronomicalObject():
             # Fit failed. Print out a warning, and use the initial guesses for
             # fit parameters. This only really seems to happen for objects
             # where the lightcurve is almost entirely noise.
-            logger.warn("GP fit failed for %s! Using guessed GP parameters.")
+            logger.warn("GP fit failed for %s! Using guessed GP parameters." %
+                        self)
             gp.set_parameter_vector(guess_parameters)
 
         if verbose:
