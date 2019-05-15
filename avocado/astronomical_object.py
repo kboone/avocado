@@ -59,8 +59,17 @@ class AstronomicalObject():
 
     @property
     def bands(self):
-        """Return a list of bands that this object has observations in."""
-        return np.unique(self.observations['band'])
+        """Return a list of bands that this object has observations in
+        
+        Returns
+        -------
+        bands : numpy.array
+            A list of bands, ordered by their central wavelength.
+        """
+        unsorted_bands = np.unique(self.observations['band'])
+        sorted_bands = np.array(sorted(unsorted_bands,
+                                       key=band_central_wavelengths.get))
+        return sorted_bands
 
     def subtract_background(self):
         """Subtract the background levels from each band.

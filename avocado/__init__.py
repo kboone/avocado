@@ -5,6 +5,7 @@ from .astronomical_object import *
 from .dataset import *
 from .instruments import *
 from .augment import *
+from .features import *
 
 from . import plasticc
 
