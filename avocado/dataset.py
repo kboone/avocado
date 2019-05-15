@@ -64,6 +64,10 @@ class Dataset():
 
                 self.objects[meta_index] = new_object
 
+        # Other variables that will be populated by various methods.
+        self.raw_features = None
+        self.features = None
+
     @property
     def path(self):
         """Return the path to where this dataset should lie on disk"""
@@ -367,7 +371,7 @@ class Dataset():
     def extract_raw_features(self, featurizer):
         """Extract raw features from the dataset.
 
-        The raw features are saved as .raw_features.
+        The raw features are saved as `self.raw_features`.
 
         Parameters
         ----------
@@ -397,3 +401,35 @@ class Dataset():
         self.raw_features = raw_features
 
         return raw_features
+
+    def select_features(self, featurizer):
+        """Select features from the dataset for classification.
+
+        This method assumes that the raw features have already been extracted
+        for this dataset and are available with `self.raw_features`. Use
+        `extract_raw_features` to calculate these from the data directly, or
+        `load_features` to recover features that were previously stored on
+        disk.
+
+        The features are saved as `self.features`.
+
+        Parameters
+        ----------
+        featurizer : :class:`Featurizer`
+            The featurizer that will be used to select the features.
+
+        Returns
+        -------
+        features : pandas.DataFrame
+            The extracted raw features.
+        """
+        if self.raw_features is None:
+            raise AvocadoException(
+                "Must calculate raw features before selecting features!"
+            )
+
+        features = featurizer.select_features(self.raw_features)
+
+        self.features = features
+
+        return features
