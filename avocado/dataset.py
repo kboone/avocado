@@ -1,6 +1,7 @@
 import numpy as np
 import os
 import pandas as pd
+from tqdm import tqdm
 
 from sklearn.model_selection import StratifiedKFold
 
@@ -362,3 +363,37 @@ class Dataset():
             ['metadata', 'observations'],
             **kwargs
         )
+
+    def extract_raw_features(self, featurizer):
+        """Extract raw features from the dataset.
+
+        The raw features are saved as .raw_features.
+
+        Parameters
+        ----------
+        featurizer : :class:`Featurizer`
+            The featurizer that will be used to calculate the features.
+
+        Returns
+        -------
+        raw_features : pandas.DataFrame
+            The extracted raw features.
+        """
+        list_raw_features = []
+        object_ids = []
+        for obj in tqdm(self.objects):
+            obj_features = featurizer.extract_raw_features(obj)
+            list_raw_features.append(obj_features.values())
+            object_ids.append(obj.metadata['object_id'])
+
+        # Pull the keys off of the last extraction. They should be the same for
+        # every set of features.
+        keys = obj_features.keys()
+
+        raw_features = pd.DataFrame(list_raw_features, index=object_ids,
+                                    columns=keys)
+        raw_features.index.name = 'object_id'
+
+        self.raw_features = raw_features
+
+        return raw_features

@@ -407,10 +407,6 @@ class PlasticcFeaturizer(Featurizer):
         s2ns = fluxes / flux_errors
         metadata = astronomical_object.metadata
 
-        # Add the object id. This shouldn't be used for training a model, but
-        # is necessary to identify which row is which when we split things up.
-        features['object_id'] = metadata['object_id']
-
         # Features from the metadata
         features['host_specz'] = metadata['host_specz']
         features['host_photoz'] = metadata['host_photoz']
@@ -721,14 +717,19 @@ class PlasticcFeaturizer(Featurizer):
         features['count_max_fall_100'] = \
             rf['count_max_fall_100'] + features['count_max_fall_50']
 
-        features['peak_frac_2'] = np.nanmedian([
+        all_peak_pos_frac_2 = [
             rf['peaks_pos_lsstu_frac_2'],
             rf['peaks_pos_lsstg_frac_2'],
             rf['peaks_pos_lsstr_frac_2'],
             rf['peaks_pos_lssti_frac_2'],
             rf['peaks_pos_lsstz_frac_2'],
             rf['peaks_pos_lssty_frac_2']
-        ], axis=0)
+        ]
+
+        if np.all(np.isnan(all_peak_pos_frac_2)):
+            features['peak_frac_2'] = np.nan
+        else:
+            features['peak_frac_2'] = np.nanmedian(all_peak_pos_frac_2)
 
         features['total_s2n'] = np.sqrt(
             rf['total_s2n_lsstu']**2 +
