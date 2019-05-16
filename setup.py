@@ -1,3 +1,4 @@
+import os
 from setuptools import setup
 
 setup(
@@ -10,5 +11,6 @@ setup(
     author_email='kboone@berkeley.edu',
     license='BSD',
     packages=['avocado'],
-    data_files=[('', ['avocado_settings.json'])]
+    data_files=[('', ['avocado_settings.json'])],
+    scripts=['scripts/' + f for f in os.listdir('scripts')],
 )
