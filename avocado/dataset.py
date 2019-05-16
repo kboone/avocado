@@ -149,7 +149,7 @@ class Dataset():
 
             # Use some pandas tricks to figure out which range of the indexes
             # we want.
-            with pd.HDFStore(data_path) as store:
+            with pd.HDFStore(data_path, 'r') as store:
                 index = store.get_storer('metadata').table.colindexes['index']
                 num_rows = index.nelements
 
@@ -169,7 +169,8 @@ class Dataset():
                 "(index >= '%s') & (index <= '%s')"
                 % (start_object_id, end_object_id)
             )
-            metadata = pd.read_hdf(data_path, 'metadata', where=match_str)
+            metadata = pd.read_hdf(data_path, 'metadata', mode='r',
+                                   where=match_str)
 
         if metadata_only:
             observations = None
