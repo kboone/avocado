@@ -5,7 +5,6 @@
     "num_folds": 5,
 
     "augment_retries": 10,
-    "augment_tag": "augment_v1",
 
     "features_directory": "./features",
     "features_tag": "features_v1",
