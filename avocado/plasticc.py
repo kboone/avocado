@@ -1,4 +1,4 @@
-"""Utility functions to interact with the PLAsTiCC dataset"""
+"""Implementation of avocado components for the PLAsTiCC dataset"""
 
 import numpy as np
 from scipy.special import erf
