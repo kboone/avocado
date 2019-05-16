@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+"""Augment a dataset using avocado"""
 
 import argparse
 
@@ -6,7 +7,7 @@ import avocado
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Augment a dataset")
+    parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         'reference_dataset',
         help='Name of the reference dataset'
