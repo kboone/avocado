@@ -332,7 +332,7 @@ class AstronomicalObject():
             `preprocess_observations`.
         """
         if verbose:
-            self.print_meta()
+            self.print_metadata()
 
         if show_gp:
             gp, observations, gp_fit_parameters = \
@@ -386,7 +386,7 @@ class AstronomicalObject():
         plt.tight_layout()
         plt.xlim(min_time, max_time)
 
-    def print_meta(self):
+    def print_metadata(self):
         """Print out the object's metadata in a nice format."""
         # Try to print out specific keys in a nice order. If these keys aren't
         # available, then we skip them. The rest of the keys are printed out in
