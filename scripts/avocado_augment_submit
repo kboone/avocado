@@ -1,0 +1,109 @@
+#!/usr/bin/env python
+"""Submit jobs to an SGE queue to augment a dataset using avocado
+
+This requires that avocado be installed and that the avocado_augment script is
+on the PATH of the submitted job.
+"""
+
+import argparse
+import os
+import subprocess
+
+sge_template = """
+#!/bin/bash
+#$ -V
+#$ -S /bin/bash
+#$ -N {job_name}
+#$ -o {jobs_directory}/{job_name}.out
+#$ -e {jobs_directory}/{job_name}.err
+
+# Use a single core for each job. This parallelizes better than trying to use
+# multiple cores per job.
+export MKL_NUM_THREADS=1
+export NUMEXPR_NUM_THREADS=1
+export OMP_NUM_THREADS=1
+
+cd {working_directory}
+avocado_augment \\
+    {reference_dataset} \\
+    {augmented_dataset} \\
+    --num_augments {num_augments} \\
+    --chunk {job} \\
+    --num_chunks {num_jobs}
+"""
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        'reference_dataset',
+        help='Name of the reference dataset'
+    )
+    parser.add_argument(
+        'augmented_dataset',
+        help='Name of the augmented dataset'
+    )
+    parser.add_argument(
+        '--num_augments',
+        type=int,
+        default=50,
+        help='The number of times to use each object in the dataset as a '
+        'reference for augmentation. Note that augmentation sometimes fails, '
+        'so this is the number of tries, not the number of sucesses. '
+        '(default: %(default)s)',
+    )
+    parser.add_argument(
+        '--num_jobs',
+        type=int,
+        default=100,
+        help='Number of jobs to submit to process the dataset. '
+        '(default: %(default)s)',
+    )
+    parser.add_argument(
+        '--working_directory',
+        default=None,
+        help='Working directory. Default is the current directory.'
+    )
+    parser.add_argument(
+        '--jobs_directory',
+        default=None,
+        help='Jobs directory for qsub scripts and output. Default is '
+        '"[working_directory]/jobs/[augmented_dataset]/"'
+    )
+
+    raw_args = parser.parse_args()
+
+    # Build a dictionary with the arguments that will be used to format the
+    # submit script.
+    args = vars(raw_args).copy()
+
+    # Update the working directory if it wasn't set.
+    if args['working_directory'] is None:
+        args['working_directory'] = os.getcwd()
+
+    # Update the log directory if it wasn't set and make sure that it exists.
+    if args['jobs_directory'] is None:
+        args['jobs_directory'] = os.path.join(
+            args['working_directory'], 'jobs', args['augmented_dataset']
+        )
+    os.makedirs(args['jobs_directory'], exist_ok=True)
+
+
+    # Create and submit the jobs one by one
+    for job_id in range(args['num_jobs']):
+        job_args = args.copy()
+
+        job_args['job'] = job_id
+
+        job_name = 'augment_%04d_%s' % (job_id, args['augmented_dataset'])
+        job_args['job_name'] = job_name
+
+        job_path = '{jobs_directory}/{job_name}.sh'.format(**job_args)
+
+        job_template = sge_template.format(**job_args)
+
+        # Write the jobs file
+        with open(job_path, 'w') as job_file:
+            job_file.write(job_template)
+
+        # Submit the job
+        subprocess.call(["qsub", job_path])
