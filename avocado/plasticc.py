@@ -1,6 +1,8 @@
 """Implementation of avocado components for the PLAsTiCC dataset"""
 
 import numpy as np
+import os
+import pandas as pd
 from scipy.special import erf
 
 from .dataset import Dataset
@@ -22,29 +24,10 @@ class PlasticcAugmentor(Augmentor):
     def __init__(self):
         super().__init__()
 
-        self._test_dataset = None
         self._photoz_reference = None
 
         # Load the photo-z model
         self._load_photoz_reference()
-
-    def _load_test_dataset(self):
-        """Load the full PLAsTiCC test dataset to use as a reference for
-        augmentation.
-
-        The metadata is cached as self._test_dataset. Only the metadata is
-        loaded.
-
-        Returns
-        =======
-        test_dataset : :class:`Dataset`
-            The test dataset loaded with metadata only.
-        """
-        if self._test_dataset is None:
-            self._test_dataset = Dataset.load('plasticc_test',
-                                              metadata_only=True)
-
-        return self._test_dataset
 
     def _load_photoz_reference(self):
         """Load the full PLAsTiCC dataset as a reference for photo-z
@@ -61,14 +44,28 @@ class PlasticcAugmentor(Augmentor):
         """
         if self._photoz_reference is None:
             logger.info("Loading photoz reference...")
-            test_dataset = self._load_test_dataset()
 
-            cut = test_dataset.metadata['host_specz'] > 0
-            cut_metadata = test_dataset.metadata[cut]
+            data_directory = settings['data_directory']
+            data_path = os.path.join(data_directory, 'plasticc_test.h5')
 
-            result = np.vstack([cut_metadata['host_specz'],
-                                cut_metadata['host_photoz'],
-                                cut_metadata['host_photoz_error']]).T
+            # When reading the metadata table, pandas will actually load all
+            # columns even if only a few are specified. To avoid having a huge
+            # memory footprint, load the metadata in chunks and pull out the
+            # columns that we care about.
+            chunksize = 10**5
+
+            use_metadata = []
+            for chunk in pd.read_hdf(data_path, 'metadata', mode='r',
+                                     chunksize=chunksize):
+                cut = chunk['host_specz'] > 0
+                use_metadata.append(chunk[cut][['host_specz', 'host_photoz',
+                                                'host_photoz_error']])
+
+            use_metadata = pd.concat(use_metadata)
+
+            result = np.vstack([use_metadata['host_specz'],
+                                use_metadata['host_photoz'],
+                                use_metadata['host_photoz_error']]).T
 
             self._photoz_reference = result
 
