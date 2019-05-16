@@ -76,6 +76,26 @@ class Dataset():
 
         return data_path
 
+    def get_raw_features_path(self, tag=None):
+        """Return the path to where the raw features for this dataset should
+        lie on disk
+
+        Parameters
+        ----------
+        tag : str (optional)
+            The version of the raw features to use. By default, this will use
+            settings['features_tag'].
+        """
+        if tag is None:
+            tag = settings['features_tag']
+
+        features_directory = settings['features_directory']
+
+        features_filename = '%s_%s.h5' % (tag, self.name)
+        features_path = os.path.join(features_directory, features_filename)
+
+        return features_path
+
     @classmethod
     def load(cls, name, metadata_only=False, chunk=None, num_chunks=None):
         """Load a dataset that has been saved in HDF5 format in the data
@@ -421,7 +441,7 @@ class Dataset():
         Returns
         -------
         features : pandas.DataFrame
-            The extracted raw features.
+            The selected features.
         """
         if self.raw_features is None:
             raise AvocadoException(
@@ -433,3 +453,52 @@ class Dataset():
         self.features = features
 
         return features
+
+    def write_raw_features(self, tag=None, **kwargs):
+        """Write the raw features out to disk.
+
+        The features will be stored in the features directory using the
+        dataset's name and the given features tag.
+
+        Parameters
+        ----------
+        tag : str (optional)
+            The tag for this version of the features. By default, this will use
+            settings['features_tag'].
+        kwargs : kwargs
+            Additional arguments to be passed to `utils.write_dataframes`
+        """
+        raw_features_path = self.get_raw_features_path(tag=tag)
+
+        write_dataframes(
+            raw_features_path,
+            [self.raw_features],
+            ['raw_features'],
+            **kwargs
+        )
+
+    def load_raw_features(self, tag=None):
+        """Load the raw features from disk.
+
+        Note: This method does not currently support reading by chunks. If
+        this is called on a chunked dataset, all of the raw features will be
+        loaded!
+
+        Parameters
+        ----------
+        tag : str (optional)
+            The version of the raw features to use. By default, this will use
+            settings['features_tag'].
+        kwargs : kwargs
+            Additional arguments to be passed to `utils.write_dataframes`
+
+        Returns
+        -------
+        raw_features : pandas.DataFrame
+            The extracted raw features.
+        """
+        raw_features_path = self.get_raw_features_path(tag=tag)
+
+        self.raw_features = pd.read_hdf(raw_features_path)
+
+        return self.raw_features

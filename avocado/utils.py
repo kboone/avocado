@@ -46,6 +46,11 @@ def write_dataframes(path, dataframes, keys, overwrite=False, append=False,
     from tables.exceptions import HDF5ExtError
     import time
 
+    # Make the containing directory if it doesn't exist yet.
+    directory = os.path.dirname(path)
+    os.makedirs(directory, exist_ok=True)
+
+    # Handle if the file already exists.
     if os.path.exists(path):
         if overwrite:
             logger.warning("Overwriting %s..." % path)

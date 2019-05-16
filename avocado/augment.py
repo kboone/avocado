@@ -422,7 +422,7 @@ class Augmentor():
                 logger.warn("Failed to generate a light curve for redshift "
                             "%.2f. Retrying." % augmented_metadata['redshift'])
 
-    def augment_dataset(self, dataset, num_augments, tag="augment",
+    def augment_dataset(self, dataset, num_augments, tag=None,
                         include_reference=True):
         """Generate augmented versions of all objects in a dataset.
 
@@ -434,6 +434,9 @@ class Augmentor():
             The number of times to use each object in the dataset as a
             reference for augmentation. Note that augmentation sometimes fails,
             so this is the number of tries, not the number of sucesses.
+        tag : str (optional)
+            The tag to use for this augmentation procedure. By default, this
+            will use settings['augment_tag'].
         include_reference : bool (optional)
             If True (default), the reference objects are included in the new
             augmented dataset. Otherwise they are dropped.
@@ -443,6 +446,9 @@ class Augmentor():
         augmented_dataset : :class:`Dataset`
             The augmented dataset.
         """
+        if tag is None:
+            tag = settings['augment_tag']
+
         augmented_objects = []
 
         for reference_object in tqdm(dataset.objects):
