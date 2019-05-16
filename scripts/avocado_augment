@@ -1,0 +1,74 @@
+#!/usr/bin/env python
+
+import argparse
+
+import avocado
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Augment a dataset")
+    parser.add_argument(
+        'reference_dataset',
+        help='Name of the reference dataset'
+    )
+    parser.add_argument(
+        'augmented_dataset',
+        help='Name of the augmented dataset'
+    )
+    parser.add_argument(
+        '--num_augments',
+        type=int,
+        default=50,
+        help='The number of times to use each object in the dataset as a '
+        'reference for augmentation. Note that augmentation sometimes fails, '
+        'so this is the number of tries, not the number of sucesses. '
+        '(default: %(default)s)',
+    )
+    parser.add_argument(
+        '--chunk',
+        type=int,
+        default=None,
+        help='If set, process the dataset by chunks. This sets the chunk '
+        'number of the dataset to use.',
+    )
+    parser.add_argument(
+        '--num_chunks',
+        type=int,
+        default=100,
+        help='If chunk is set, this is the total number of chunks to use for '
+        'processing the dataset. (default: %(default)s)',
+    )
+
+    args = parser.parse_args()
+
+    # Load the reference dataset
+    print("Loading reference dataset...")
+    dataset = avocado.Dataset.load(
+        args.reference_dataset,
+        chunk=args.chunk,
+        num_chunks=args.num_chunks,
+    )
+
+    # Load the augmentor. For now, we only have the PLAsTiCC augmentor although
+    # this could be an option in the future.
+    print("Loading augmentor...")
+    augmentor = avocado.plasticc.PlasticcAugmentor()
+
+    # Augment the dataset
+    print("Augmenting the dataset...")
+    augmented_dataset = augmentor.augment_dataset(
+        args.augmented_dataset,
+        dataset,
+        args.num_augments,
+    )
+
+    # Save the augmented dataset
+    print("Saving the augmented dataset...")
+    if args.chunk is None:
+        augmented_dataset.write()
+    else:
+        # If we are parsing chunks, append the results of each chunk to the
+        # same files.
+        augmented_dataset.write(append=True)
+
+    print("Done!")
