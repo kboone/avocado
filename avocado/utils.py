@@ -275,6 +275,7 @@ def write_dataframe(path, dataframe, key, overwrite=False, append=False,
             )
 
     # Get a lock on the HDF5 file.
+    num_fails = 0
     while True:
         try:
             store = pd.HDFStore(path, 'a')
@@ -285,11 +286,21 @@ def write_dataframe(path, dataframe, key, overwrite=False, append=False,
             if not append:
                 raise
 
-            logger.warning(
+            logger.info(
                 "Couldn't get lock for HDF5 file %s... another process is "
                 "probably using it. Retrying in %d seconds."
                 % (path, timeout)
             )
+
+            num_fails += 1
+
+            if num_fails % 40 == 0:
+                logger.warning(
+                    "Failed %d times to get lock for HDF5 file %s... will "
+                    "keep trying (there are probably a lot of processes "
+                    "trying to write to it)."
+                    % (num_fails, path)
+                )
 
             time.sleep(timeout)
         else:
