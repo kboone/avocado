@@ -257,7 +257,7 @@ def write_dataframe(path, dataframe, key, overwrite=False, append=None,
     import time
 
     if append is None:
-        if chunk:
+        if chunk is not None:
             append = True
         else:
             append = False
