@@ -380,4 +380,4 @@ def read_dataframe(path, key, *args, **kwargs):
     
     This is just a thin wrapper around read_dataframes.
     """
-    return read_dataframes(path, [key], **kwargs)
+    return read_dataframes(path, [key], **kwargs)[0]

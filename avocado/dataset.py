@@ -6,12 +6,13 @@ from tqdm import tqdm
 from sklearn.model_selection import StratifiedKFold
 
 from .astronomical_object import AstronomicalObject
-from .utils import logger, AvocadoException, write_dataframe, read_dataframes
+from .utils import logger, AvocadoException, write_dataframe, \
+    read_dataframes, read_dataframe
 from .settings import settings
 
 class Dataset():
     """Class representing a dataset of many astronomical objects.
-    
+
     Parameters
     ----------
     name : str
@@ -279,7 +280,7 @@ class Dataset():
         of the dataset and doing additional processing on it. The arguments
         used by get_object are removed from the arguments list, and the
         remainder are returned. See `get_object` for details of the parameters.
-        
+
         Returns
         =======
         astronomical_object : AstronomicalObject
@@ -449,7 +450,7 @@ class Dataset():
             **kwargs
         )
 
-    def load_raw_features(self, tag=None):
+    def load_raw_features(self, tag=None, **kwargs):
         """Load the raw features from disk.
 
         Parameters
