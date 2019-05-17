@@ -1,11 +1,13 @@
 import logging
 import os
 import pandas as pd
+import sys
 
 from . import settings
 
 
 # Logging
+logging.basicConfig(stream=sys.stdout)
 logger = logging.getLogger('avocado')
 
 
