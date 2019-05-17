@@ -201,23 +201,23 @@ def read_dataframes(path, keys, chunk=None, num_chunks=None,
     return dataframes
 
 
-def write_dataframe(path, dataframe, key, overwrite=False, append=False,
+def write_dataframe(path, dataframe, key, overwrite=False, append=None,
                     timeout=5, chunk=None, num_chunks=None,
                     chunk_column='object_id', index_chunk_column=True):
     """Write a dataframe out to an HDF5 file
 
-    The append functionality is designed so that multiple independent processes
-    running simultaneously can append to the same file. Each process will lock
-    the output file while it is writing, and other processes will repeatedly
-    try to get the lock until they succeed. With this implementation, if the
-    file is locked by other means, the processes will hang endlessly until the
-    lock is released.
+    The append functionality is designed so that multiple independent
+    processes, potentially running simultaneously, can append to the same file.
+    Each process will lock the output file while it is writing, and other
+    processes will repeatedly try to get the lock until they succeed. With this
+    implementation, if the file is locked by other means, the processes will
+    hang endlessly until the lock is released.
 
-    Typically, the append functionality is used when the writing process loaded
-    an input file with multiple chunks. If "chunk" and "num_chunks" are passed,
-    then this writer keeps track of which chunks have been processed and which
-    haven't. `read_dataframes` will then be able to tell if it is reading a
-    complete file or not.
+    Typically, the append functionality is used when the writing process is
+    operating on an input file with multiple chunks. If "chunk" and
+    "num_chunks" are passed, then this writer keeps track of which chunks have
+    been processed and which haven't. `read_dataframes` will then be able to
+    tell if it is reading a complete file or not.
 
     Parameters
     ----------
@@ -233,7 +233,7 @@ def write_dataframe(path, dataframe, key, overwrite=False, append=False,
         not supported if using the append functionality.
     append : bool
         If True, the dataframe will be appended to the file if a file exists at
-        the given path.
+        the given path. defualt: True if chunk is set, False otherwise.
     timeout : int
         After failing to write to a file in append mode, wait this amount of
         time in seconds before retrying the write (to allow other processes to
@@ -256,6 +256,12 @@ def write_dataframe(path, dataframe, key, overwrite=False, append=False,
     from tables.exceptions import HDF5ExtError
     import time
 
+    if append is None:
+        if chunk:
+            append = True
+        else:
+            append = False
+
     # Make the containing directory if it doesn't exist yet.
     directory = os.path.dirname(path)
     os.makedirs(directory, exist_ok=True)
@@ -275,7 +281,6 @@ def write_dataframe(path, dataframe, key, overwrite=False, append=False,
             )
 
     # Get a lock on the HDF5 file.
-    num_fails = 0
     while True:
         try:
             store = pd.HDFStore(path, 'a')
@@ -291,16 +296,6 @@ def write_dataframe(path, dataframe, key, overwrite=False, append=False,
                 "probably using it. Retrying in %d seconds."
                 % (path, timeout)
             )
-
-            num_fails += 1
-
-            if num_fails % 40 == 0:
-                logger.warning(
-                    "Failed %d times to get lock for HDF5 file %s... will "
-                    "keep trying (there are probably a lot of processes "
-                    "trying to write to it)."
-                    % (num_fails, path)
-                )
 
             time.sleep(timeout)
         else:
