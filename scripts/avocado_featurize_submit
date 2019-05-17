@@ -1,13 +1,15 @@
 #!/usr/bin/env python
-"""Submit jobs to an SGE queue to augment a dataset using avocado
+"""Submit jobs to an SGE queue to featurize a dataset using avocado
 
-This requires that avocado be installed and that the avocado_augment script is
-on the PATH.
+This requires that avocado be installed and that the avocado_featurize script
+is on the PATH.
 """
 
 import argparse
 import os
 import subprocess
+
+import avocado
 
 sge_template = """
 #!/bin/bash
@@ -24,32 +26,25 @@ export NUMEXPR_NUM_THREADS=1
 export OMP_NUM_THREADS=1
 
 cd {working_directory}
-avocado_augment \\
-    {reference_dataset} \\
-    {augmented_dataset} \\
-    --num_augments {num_augments} \\
+avocado_featurize \\
+    {dataset} \\
     --chunk {job} \\
-    --num_chunks {num_jobs}
+    --num_chunks {num_jobs} \\
+    --tag {tag}
 """
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
-        'reference_dataset',
-        help='Name of the reference dataset'
+        'dataset',
+        help='Name of the dataset to featurize.'
     )
     parser.add_argument(
-        'augmented_dataset',
-        help='Name of the augmented dataset'
-    )
-    parser.add_argument(
-        '--num_augments',
+        '--chunk',
         type=int,
-        default=50,
-        help='The number of times to use each object in the dataset as a '
-        'reference for augmentation. Note that augmentation sometimes fails, '
-        'so this is the number of tries, not the number of sucesses. '
-        '(default: %(default)s)',
+        default=None,
+        help='If set, process the dataset by chunks. This sets the chunk '
+        'number of the dataset to use.',
     )
     parser.add_argument(
         '--num_jobs',
@@ -57,6 +52,12 @@ if __name__ == "__main__":
         default=100,
         help='Number of jobs to submit to process the dataset. '
         '(default: %(default)s)',
+    )
+    parser.add_argument(
+        '--tag',
+        default=avocado.settings['features_tag'],
+        help='The tag to use for these features. The default is set in '
+        'avocado_settings.json. (default: %(default)s',
     )
     parser.add_argument(
         '--working_directory',
@@ -67,7 +68,7 @@ if __name__ == "__main__":
         '--jobs_directory',
         default=None,
         help='Jobs directory for qsub scripts and output. Default is '
-        '"[working_directory]/jobs/[augmented_dataset]/"'
+        '"[working_directory]/jobs/featurize_[dataset]/"'
     )
     parser.add_argument(
         '--qsub_arguments',
@@ -88,7 +89,7 @@ if __name__ == "__main__":
     # Update the log directory if it wasn't set and make sure that it exists.
     if args['jobs_directory'] is None:
         args['jobs_directory'] = os.path.join(
-            args['working_directory'], 'jobs', args['augmented_dataset']
+            args['working_directory'], 'jobs', 'featurize_%s' % args['dataset']
         )
     os.makedirs(args['jobs_directory'], exist_ok=True)
 
@@ -99,7 +100,7 @@ if __name__ == "__main__":
 
         job_args['job'] = job_id
 
-        job_name = 'augment_%04d_%s' % (job_id, args['augmented_dataset'])
+        job_name = 'featurize_%04d_%s' % (job_id, args['dataset'])
         job_args['job_name'] = job_name
 
         job_path = '{jobs_directory}/{job_name}.sh'.format(**job_args)

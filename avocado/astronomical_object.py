@@ -228,8 +228,8 @@ class AstronomicalObject():
             # Fit failed. Print out a warning, and use the initial guesses for
             # fit parameters. This only really seems to happen for objects
             # where the lightcurve is almost entirely noise.
-            logger.warn("GP fit failed for %s! Using guessed GP parameters." %
-                        self)
+            logger.warn("GP fit failed for %s! Using guessed GP parameters. "
+                        "This is usually OK." % self)
             gp.set_parameter_vector(guess_parameters)
 
         if verbose:
