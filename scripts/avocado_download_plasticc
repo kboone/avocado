@@ -136,8 +136,8 @@ def preprocess_observations(input_path, output_path, chunk_size=10**6):
     for chunk in tqdm(pd.read_csv(input_path, chunksize=chunk_size),
                       desc="    %s" % os.path.basename(input_path)):
         chunk = update_plasticc_observations(chunk)
-        chunk.to_hdf(output_path, 'observations', mode='a', append=True,
-                     format='table', data_columns=['object_id'])
+        avocado.utils.write_dataframe(output_path, chunk, 'observations',
+                                      append=True, index_chunk_column=False)
 
 
 if __name__ == "__main__":
@@ -148,42 +148,37 @@ if __name__ == "__main__":
     os.makedirs(rawdir, exist_ok=True)
 
     # Download the PLAsTiCC dataset from zenodo
-    zenodo_url = "https://zenodo.org/api/records/2539456"
-    zenodo_metadata = requests.get(zenodo_url).json()
+    # zenodo_url = "https://zenodo.org/api/records/2539456"
+    # zenodo_metadata = requests.get(zenodo_url).json()
 
-    print("Downloading the PLAsTiCC dataset from zenodo...\n")
-    for file_metadata in zenodo_metadata['files']:
-        path = os.path.join(rawdir, file_metadata['key'])
-        url = file_metadata['links']['self']
-        filesize = file_metadata['size']
+    # print("Downloading the PLAsTiCC dataset from zenodo...\n")
+    # for file_metadata in zenodo_metadata['files']:
+        # path = os.path.join(rawdir, file_metadata['key'])
+        # url = file_metadata['links']['self']
+        # filesize = file_metadata['size']
 
-        download_file(url, path, filesize)
+        # download_file(url, path, filesize)
 
     print("\nPreprocessing the PLAsTiCC dataset...\n")
 
     train_path = os.path.join(basedir, 'plasticc_train.h5')
-    if os.path.exists(train_path):
-        os.remove(train_path)
-
     test_path = os.path.join(basedir, 'plasticc_test.h5')
-    if os.path.exists(test_path):
-        os.remove(test_path)
 
     print("Preprocessing training metadata...")
     raw_train_metadata_path = os.path.join(
         rawdir, 'plasticc_train_metadata.csv.gz')
     train_metadata = pd.read_csv(raw_train_metadata_path)
     train_metadata = update_plasticc_metadata(train_metadata)
-    train_metadata.to_hdf(train_path, 'metadata', mode='a', format='table',
-                          data_columns=['object_id'])
+    avocado.utils.write_dataframe(train_path, train_metadata, 'metadata',
+                                  overwrite=True)
 
     print("Preprocessing test metadata...")
     raw_test_metadata_path = os.path.join(
         rawdir, 'plasticc_test_metadata.csv.gz')
     test_metadata = pd.read_csv(raw_test_metadata_path)
     test_metadata = update_plasticc_metadata(test_metadata)
-    test_metadata.to_hdf(test_path, 'metadata', mode='a', format='table',
-                         data_columns=['object_id'])
+    avocado.utils.write_dataframe(test_path, test_metadata, 'metadata',
+                                  overwrite=True)
 
     print("Preprocessing training observations...")
     raw_train_observations_path = os.path.join(

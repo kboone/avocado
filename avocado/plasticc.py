@@ -178,7 +178,7 @@ class PlasticcAugmentor(Augmentor):
             augmented_metadata['host_specz'] = aug_redshift
             augmented_metadata['host_photoz'] = aug_photoz
             augmented_metadata['host_photoz_error'] = aug_photoz_error
-            augmented_metadata['distmod'] = aug_distmod
+            augmented_metadata['augment_brightness'] = 0.
 
     def _augment_metadata(self, reference_object):
         """Generate new metadata for the augmented object.

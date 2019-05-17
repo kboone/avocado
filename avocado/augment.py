@@ -334,18 +334,19 @@ class Augmentor():
             observations['flux'] = new_fluxes
             observations['flux_error'] = np.sqrt(new_fluxvars)
 
-            # Update the brightness of the new observations.
-            if reference_redshift == 0:
-                # Adjust brightness for galactic objects.
-                adjust_mag = np.random.normal(0, 0.5)
-                # adjust_mag = np.random.lognormal(-1, 0.5)
-                adjust_scale = 10**(-0.4*adjust_mag)
-            else:
+            # Update the brightness of the new observations. If the
+            # 'augment_brightness' key is in the metadata, we add that in
+            # magnitudes to the augmented object.
+            augment_brightness = augmented_metadata.get(
+                'augment_brightness', 0)
+            adjust_scale = 10**(-0.4*augment_brightness)
+
+            if reference_redshift != 0:
                 # Adjust brightness for extragalactic objects. We simply follow
                 # the Hubble diagram.
                 delta_distmod = (self.cosmology.distmod(reference_redshift) -
                                  self.cosmology.distmod(new_redshift)).value
-                adjust_scale = 10**(0.4*delta_distmod)
+                adjust_scale *= 10**(0.4*delta_distmod)
 
             observations['flux'] *= adjust_scale
             observations['flux_error'] *= adjust_scale
@@ -457,7 +458,9 @@ class Augmentor():
                 if augmented_object is not None:
                     augmented_objects.append(augmented_object)
 
-        augmented_dataset = Dataset.from_objects(augment_name,
-                                                 augmented_objects)
+        augmented_dataset = Dataset.from_objects(
+            augment_name, augmented_objects, chunk=dataset.chunk,
+            num_chunks=dataset.num_chunks
+        )
 
         return augmented_dataset

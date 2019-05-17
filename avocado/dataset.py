@@ -6,7 +6,7 @@ from tqdm import tqdm
 from sklearn.model_selection import StratifiedKFold
 
 from .astronomical_object import AstronomicalObject
-from .utils import logger, AvocadoException, write_dataframes
+from .utils import logger, AvocadoException, write_dataframe, read_dataframes
 from .settings import settings
 
 class Dataset():
@@ -26,8 +26,14 @@ class Dataset():
     objects : list
         A list of :class:`AstronomicalObject` instances. Either this or
         observations can be specified but not both.
+    chunk : int (optional)
+        If the dataset was loaded in chunks, this indicates the chunk number.
+    num_chunks : int (optional)
+        If the dataset was loaded in chunks, this is the total number of chunks
+        used.
     """
-    def __init__(self, name, metadata, observations=None, objects=None):
+    def __init__(self, name, metadata, observations=None, objects=None,
+                 chunk=None, num_chunks=None):
         """Create a new Dataset from a set of metadata and observations"""
         # Make copies of everything so that we don't mess anything up.
         metadata = metadata.copy()
@@ -36,6 +42,8 @@ class Dataset():
 
         self.name = name
         self.metadata = metadata
+        self.chunk = chunk
+        self.num_chunks = num_chunks
 
         if observations is None:
             self.objects = objects
@@ -97,7 +105,8 @@ class Dataset():
         return features_path
 
     @classmethod
-    def load(cls, name, metadata_only=False, chunk=None, num_chunks=None):
+    def load(cls, name, metadata_only=False, chunk=None, num_chunks=None,
+             **kwargs):
         """Load a dataset that has been saved in HDF5 format in the data
         directory.
 
@@ -105,7 +114,7 @@ class Dataset():
         `scripts/download_plasticc.py`.
 
         The dataset can optionally be loaded in chunks. To do this, pass chunk
-        and num_chunks to this method.
+        and num_chunks to this method. See `read_dataframes` for details.
 
         Parameters
         ----------
@@ -119,6 +128,8 @@ class Dataset():
             number to load. This is a zero-based index.
         num_chunks : int (optional)
             The total number of chunks to use.
+        **kwargs
+            Additional arguments to `read_dataframes`
 
         Returns
         -------
@@ -131,68 +142,21 @@ class Dataset():
         if not os.path.exists(data_path):
             raise AvocadoException("Couldn't find dataset %s!" % name)
 
-        if chunk is None:
-            # Load the full dataset
-            metadata = pd.read_hdf(data_path, 'metadata') 
-        else:
-            # Load only part of the dataset.
-            if num_chunks is None:
-                raise AvocadoException(
-                    "num_chunks must be specified to load the data in chunks!"
-                )
-
-            if chunk < 0 or chunk >= num_chunks:
-                raise AvocadoException(
-                    "chunk must be in range [0, num_chunks)!"
-                )
-
-
-            # Use some pandas tricks to figure out which range of the indexes
-            # we want.
-            with pd.HDFStore(data_path, 'r') as store:
-                index = store.get_storer('metadata').table.colindexes['index']
-                num_rows = index.nelements
-
-                # Inclusive indices
-                start_idx = chunk * num_rows // num_chunks
-                end_idx = (chunk + 1) * num_rows // num_chunks - 1
-
-                # Use the HDF5 index to figure out the object_ids of the rows
-                # that we are interested in.
-                start_object_id = index.read_sorted(start_idx, start_idx+1)[0]
-                end_object_id = index.read_sorted(end_idx, end_idx+1)[0]
-
-                start_object_id = start_object_id.decode().strip()
-                end_object_id = end_object_id.decode().strip()
-
-            match_str = (
-                "(index >= '%s') & (index <= '%s')"
-                % (start_object_id, end_object_id)
-            )
-            metadata = pd.read_hdf(data_path, 'metadata', mode='r',
-                                   where=match_str)
-
         if metadata_only:
-            observations = None
-        elif chunk is not None:
-            # Load only the observations for this chunk
-            match_str = (
-                "(object_id >= '%s') & (object_id <= '%s')"
-                % (start_object_id, end_object_id)
-            )
-            observations = pd.read_hdf(data_path, 'observations',
-                                       where=match_str)
+            keys = ['metadata']
         else:
-            # Load all observations
-            observations = pd.read_hdf(data_path, 'observations')
+            keys = ['metadata', 'observations']
+
+        dataframes = read_dataframes(data_path, keys, chunk=chunk,
+                                     num_chunks=num_chunks, **kwargs)
 
         # Create a Dataset object
-        dataset = cls(name, metadata, observations)
+        dataset = cls(name, *dataframes, chunk=chunk, num_chunks=num_chunks)
 
         return dataset
 
     @classmethod
-    def from_objects(cls, name, objects):
+    def from_objects(cls, name, objects, **kwargs):
         """Load a dataset from a list of AstronomicalObject instances.
 
         Parameters
@@ -201,6 +165,8 @@ class Dataset():
             A list of AstronomicalObject instances.
         name : str
             The name of the dataset.
+        **kwargs
+            Additional arguments to pass to Dataset()
 
         Returns
         -------
@@ -212,7 +178,7 @@ class Dataset():
         metadata.set_index('object_id', inplace=True)
 
         # Load the new dataset.
-        dataset = cls(name, metadata, objects=objects)
+        dataset = cls(name, metadata, objects=objects, **kwargs)
 
         return dataset
 
@@ -318,7 +284,7 @@ class Dataset():
         =======
         astronomical_object : AstronomicalObject
             The object that was retrieved.
-        kwargs : dict
+        **kwargs
             Additional arguments passed to the function that weren't used.
         """
         return self.get_object(index, category, object_id), kwargs
@@ -371,8 +337,8 @@ class Dataset():
 
         Parameters
         ----------
-        kwargs : kwargs
-            Additional arguments to be passed to `utils.write_dataframes`
+        **kwargs
+            Additional arguments to be passed to `utils.write_dataframe`
         """
         # Pull out the observations from every object
         observations = []
@@ -382,11 +348,14 @@ class Dataset():
             observations.append(object_observations)
         observations = pd.concat(observations, ignore_index=True, sort=False)
 
-        write_dataframes(
-            self.path,
-            [self.metadata, observations],
-            ['metadata', 'observations'],
-            **kwargs
+        write_dataframe(
+            self.path, self.metadata, 'metadata', chunk=self.chunk,
+            num_chunks=self.num_chunks, **kwargs
+        )
+
+        write_dataframe(
+            self.path, observations, 'observations', index_chunk_column=False,
+            chunk=self.chunk, num_chunks=self.num_chunks, **kwargs
         )
 
     def extract_raw_features(self, featurizer):
@@ -466,32 +435,28 @@ class Dataset():
         tag : str (optional)
             The tag for this version of the features. By default, this will use
             settings['features_tag'].
-        kwargs : kwargs
-            Additional arguments to be passed to `utils.write_dataframes`
+        **kwargs
+            Additional arguments to be passed to `utils.write_dataframe`
         """
         raw_features_path = self.get_raw_features_path(tag=tag)
 
-        write_dataframes(
+        write_dataframe(
             raw_features_path,
-            [self.raw_features],
-            ['raw_features'],
+            self.raw_features,
+            'raw_features',
+            chunk=self.chunk,
+            num_chunks=self.num_chunks,
             **kwargs
         )
 
     def load_raw_features(self, tag=None):
         """Load the raw features from disk.
 
-        Note: This method does not currently support reading by chunks. If
-        this is called on a chunked dataset, all of the raw features will be
-        loaded!
-
         Parameters
         ----------
         tag : str (optional)
             The version of the raw features to use. By default, this will use
             settings['features_tag'].
-        kwargs : kwargs
-            Additional arguments to be passed to `utils.write_dataframes`
 
         Returns
         -------
@@ -500,6 +465,12 @@ class Dataset():
         """
         raw_features_path = self.get_raw_features_path(tag=tag)
 
-        self.raw_features = pd.read_hdf(raw_features_path)
+        self.raw_features = read_dataframe(
+            raw_features_path,
+            'raw_features',
+            chunk=self.chunk,
+            num_chunks=self.num_chunks,
+            **kwargs
+        )
 
         return self.raw_features
