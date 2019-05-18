@@ -138,7 +138,9 @@ def read_dataframes(path, keys, chunk=None, num_chunks=None,
         # Not loading in chunks, just load all of the datasets normally.
         dataframes = []
         for key in keys:
-            dataframes.append(pd.read_hdf(store, key))
+            dataframe = pd.read_hdf(store, key)
+            dataframe.sort_index(inplace=True)
+            dataframes.append(dataframe)
         store.close()
         return dataframes
 
@@ -197,7 +199,10 @@ def read_dataframes(path, keys, chunk=None, num_chunks=None,
             "(%s >= '%s') & (%s <= '%s')"
             % (use_name, start_object_id, use_name, end_object_id)
         )
-        dataframes.append(pd.read_hdf(store, key, where=match_str))
+        dataframe = pd.read_hdf(store, key, where=match_str)
+        dataframe.sort_index(inplace=True)
+
+        dataframes.append(dataframe)
 
     store.close()
     return dataframes
