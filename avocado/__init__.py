@@ -1,11 +1,12 @@
 from .settings import settings
 from .utils import *
 
-from .astronomical_object import *
-from .dataset import *
-from .instruments import *
 from .augment import *
+from .astronomical_object import *
+from .classifier import *
+from .dataset import *
 from .features import *
+from .instruments import *
 
 from . import plasticc
 
