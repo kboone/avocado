@@ -384,7 +384,7 @@ def _create_csi_index(store, key, column_name):
 
 def read_dataframe(path, key, *args, **kwargs):
     """Read a single DataFrame out to an HDF5 file
-    
+
     This is just a thin wrapper around read_dataframes.
     """
     return read_dataframes(path, [key], **kwargs)[0]
