@@ -1,0 +1,109 @@
+#!/usr/bin/env python
+"""Submit jobs to an SGE queue to generate predictions for a dataset using
+avocado
+
+This requires that avocado be installed and that the avocado_predict script
+is on the PATH.
+"""
+
+import argparse
+import os
+import subprocess
+
+import avocado
+
+sge_template = """
+#!/bin/bash
+#$ -V
+#$ -S /bin/bash
+#$ -N {job_name}
+#$ -o {jobs_directory}/{job_name}.out
+#$ -e {jobs_directory}/{job_name}.err
+
+# Use a single core for each job. This parallelizes better than trying to use
+# multiple cores per job.
+export MKL_NUM_THREADS=1
+export NUMEXPR_NUM_THREADS=1
+export OMP_NUM_THREADS=1
+
+cd {working_directory}
+avocado_predict \\
+    {dataset} \\
+    {classifier} \\
+    --chunk {job} \\
+    --num_chunks {num_jobs} \\
+"""
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        'dataset',
+        help='Name of the dataset to generate predictions for.'
+    )
+    parser.add_argument(
+        'classifier',
+        help='Name of the classifier to use.'
+    )
+    parser.add_argument(
+        '--num_jobs',
+        type=int,
+        default=100,
+        help='Number of jobs to submit to process the dataset. '
+        '(default: %(default)s)',
+    )
+    parser.add_argument(
+        '--working_directory',
+        default=None,
+        help='Working directory. Default is the current directory.'
+    )
+    parser.add_argument(
+        '--jobs_directory',
+        default=None,
+        help='Jobs directory for qsub scripts and output. Default is '
+        '"[working_directory]/jobs/predict_[dataset]/"'
+    )
+    parser.add_argument(
+        '--qsub_arguments',
+        default='',
+        help='Additional arguments to pass to qsub'
+    )
+
+    raw_args = parser.parse_args()
+
+    # Build a dictionary with the arguments that will be used to format the
+    # submit script.
+    args = vars(raw_args).copy()
+
+    # Update the working directory if it wasn't set.
+    if args['working_directory'] is None:
+        args['working_directory'] = os.getcwd()
+
+    # Update the log directory if it wasn't set and make sure that it exists.
+    if args['jobs_directory'] is None:
+        args['jobs_directory'] = os.path.join(
+            args['working_directory'], 'jobs',
+            'predict_%s_%s' % (args['dataset'], args['classifier'])
+        )
+    os.makedirs(args['jobs_directory'], exist_ok=True)
+
+
+    # Create and submit the jobs one by one
+    for job_id in range(args['num_jobs']):
+        job_args = args.copy()
+
+        job_args['job'] = job_id
+
+        job_name = 'predict_%04d_%s_%s' % (job_id, args['dataset'],
+                                           args['classifier'])
+        job_args['job_name'] = job_name
+
+        job_path = '{jobs_directory}/{job_name}.sh'.format(**job_args)
+
+        job_template = sge_template.format(**job_args)
+
+        # Write the jobs file
+        with open(job_path, 'w') as job_file:
+            job_file.write(job_template)
+
+        # Submit the job
+        subprocess.call(["qsub"] + args['qsub_arguments'].split() + [job_path])
