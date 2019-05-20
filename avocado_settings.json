@@ -12,46 +12,5 @@
 
     "classifier_directory": "./classifiers",
 
-    "predictions_directory": "./predictions",
-
-    "RAW_DATA_DIR": "./data",
-    "RAW_TRAINING_PATH": "./data/training_set.csv",
-    "RAW_TRAINING_METADATA_PATH": "./data/training_set_metadata.csv",
-    "RAW_TEST_PATH": "./data/test_set.csv",
-    "RAW_TEST_METADATA_PATH": "./data/test_set_metadata.csv",
-    "UNBLIND_TEST_METADATA_PATH": "./data/unblind_test_set_metadata.csv",
-
-    "SPLIT_TEST_DIR": "./data_split",
-    "SPLIT_TEST_PATH_FORMAT": "./data_split/plasticc_split_%04d.h5",
-
-    "FEATURES_DIR": "./features",
-    "FEATURES_PATH_FORMAT": "./features/features_v%d_%s.h5",
-    "GP_FITS_PATH_FORMAT": "./features/gp_fits_v%d_%s.h5",
-    "FEATURES_VERSION": 5,
-
-    "SALT_FITS_DIR": "./salt_fits",
-    "SALT_FITS_PATH_FORMAT": "./salt_fits/salt_fits_%s.h5",
-
-    "AUGMENT_DIR": "./augment",
-    "AUGMENT_PATH_FORMAT": "./augment/%s.h5",
-    "NUM_AUGMENTS": 2,
-    "AUGMENT_VERSION": 23,
-
-    "MODEL_DIR": "./model",
-    "MODEL_PATH_FORMAT": "./model/model_%d.pkl",
-
-    "FLAT_WEIGHT": false,
-    "REDSHIFT_WEIGHT": false,
-    "RATES_WEIGHT": false,
-    "NO_UNKNOWN_WEIGHT": false,
-
-    "SCORES_DIR": "./scores",
-    "SCORES_PATH_FORMAT": "./scores/scores_%d.npz",
-
-    "SUBMISSIONS_DIR": "./submissions/",
-    "SUBMISSIONS_PATH_FORMAT": "./submissions/submission_%d.csv",
-    "SUBMISSIONS_RATES_PATH_FORMAT": "./submissions/submission_rates_%d.csv",
-    "SUBMISSIONS_PROBE99_PATH_FORMAT": "./submissions/submission_probe99_%d.csv",
-
-    "RATES_PATH_FORMAT": "./scores/rates_aug%s.csv"
+    "predictions_directory": "./predictions"
 }
