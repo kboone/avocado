@@ -407,7 +407,7 @@ class Dataset():
         """
         list_raw_features = []
         object_ids = []
-        for obj in tqdm(self.objects, desc='Object'):
+        for obj in tqdm(self.objects, desc='Object', dynamic_ncols=True):
             obj_features = featurizer.extract_raw_features(obj)
             list_raw_features.append(obj_features.values())
             object_ids.append(obj.metadata['object_id'])

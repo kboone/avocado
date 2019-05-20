@@ -134,7 +134,8 @@ def update_plasticc_observations(observations):
 def preprocess_observations(input_path, output_path, chunk_size=10**6):
     """Preprocess an observations table and write it out."""
     for chunk in tqdm(pd.read_csv(input_path, chunksize=chunk_size),
-                      desc="    %s" % os.path.basename(input_path)):
+                      desc="    %s" % os.path.basename(input_path),
+                      dynamic_ncols=True):
         chunk = update_plasticc_observations(chunk)
         avocado.utils.write_dataframe(output_path, chunk, 'observations',
                                       append=True, index_chunk_column=False)

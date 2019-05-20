@@ -283,7 +283,8 @@ class LightGBMClassifier(Classifier):
 
         predictions = 0
 
-        for classifier in tqdm(self.classifiers, desc='Classifier'):
+        for classifier in tqdm(self.classifiers, desc='Classifier',
+                               dynamic_ncols=True):
             fold_scores = classifier.predict_proba(
                 features, raw_score=True,
                 num_iteration=classifier.best_iteration_

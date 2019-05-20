@@ -449,7 +449,8 @@ class Augmentor():
         """
         augmented_objects = []
 
-        for reference_object in tqdm(dataset.objects, desc='Object'):
+        for reference_object in tqdm(dataset.objects, desc='Object',
+                                     dynamic_ncols=True):
             if include_reference:
                 augmented_objects.append(reference_object)
 

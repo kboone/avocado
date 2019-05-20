@@ -69,7 +69,8 @@ if __name__ == "__main__":
     else:
         # Process all chunks
         print("Processing the dataset in %d chunks..." % args.num_chunks)
-        for chunk in tqdm(range(args.num_chunks), desc='Chunk'):
+        for chunk in tqdm(range(args.num_chunks), desc='Chunk',
+                          dynamic_ncols=True):
             process_chunk(featurizer, chunk, args, verbose=False)
 
     print("Done!")
