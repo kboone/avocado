@@ -2,8 +2,30 @@
 """Featurize a dataset using avocado"""
 
 import argparse
+from tqdm import tqdm
 
 import avocado
+
+
+def process_chunk(featurizer, chunk, args, verbose=True):
+    # Load the reference dataset
+    if verbose:
+        print("Loading dataset...")
+    dataset = avocado.load(
+        args.dataset,
+        chunk=chunk,
+        num_chunks=args.num_chunks,
+    )
+
+    # Featurize the dataset
+    if verbose:
+        print("Featurizing the dataset...")
+    dataset.extract_raw_features(featurizer)
+
+    # Save the features.
+    if verbose:
+        print("Saving the features...")
+    dataset.write_raw_features(tag=args.tag)
 
 
 if __name__ == "__main__":
@@ -13,47 +35,41 @@ if __name__ == "__main__":
         help='Name of the dataset to featurize.'
     )
     parser.add_argument(
-        '--chunk',
-        type=int,
-        default=None,
-        help='If set, process the dataset by chunks. This sets the chunk '
-        'number of the dataset to use.',
+        '--tag',
+        default=avocado.settings['features_tag'],
+        help='The tag to use for these features. The default is set in '
+        'avocado_settings.json. (default: %(default)s)',
     )
     parser.add_argument(
         '--num_chunks',
         type=int,
         default=100,
-        help='If chunk is set, this is the total number of chunks to use for '
-        'processing the dataset. (default: %(default)s)',
+        help='The dataset will be processed in chunks to avoid loading all of '
+        'the data at once. This sets the total number of chunks to use. '
+        '(default: %(default)s)',
     )
     parser.add_argument(
-        '--tag',
-        default=avocado.settings['features_tag'],
-        help='The tag to use for these features. The default is set in '
-        'avocado_settings.json. (default: %(default)s',
+        '--chunk',
+        type=int,
+        default=None,
+        help='If set, only process this chunk of the dataset. This is '
+        'intended to be used to split processing into multiple jobs.'
     )
 
     args = parser.parse_args()
-
-    # Load the reference dataset
-    print("Loading dataset...")
-    dataset = avocado.load(
-        args.dataset,
-        chunk=args.chunk,
-        num_chunks=args.num_chunks,
-    )
 
     # Load the featurizer. For now, we only have the PLAsTiCC featurizer
     # although this could be an option in the future.
     print("Loading featurizer...")
     featurizer = avocado.plasticc.PlasticcFeaturizer()
 
-    # Featurize the dataset
-    print("Featurizing the dataset...")
-    dataset.extract_raw_features(featurizer)
-
-    # Save the features.
-    print("Saving the features...")
-    dataset.write_raw_features(tag=args.tag)
+    if args.chunk:
+        # Process a single chunk
+        process_chunk(featurizer, args.chunk, args)
+    else:
+        # Process all chunks
+        print("Processing the dataset in %d chunks..." % args.num_chunks)
+        for chunk in tqdm(range(args.num_chunks)):
+            process_chunk(featurizer, chunk, args, verbose=False)
 
     print("Done!")
