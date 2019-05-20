@@ -328,7 +328,8 @@ class Augmentor():
             new_wavelengths = np.array([band_central_wavelengths[i] for i in
                                         observations['band']])
             eval_wavelengths = new_wavelengths / redshift_scale
-            pred_x_data = np.vstack([observations['time'], eval_wavelengths]).T
+            pred_x_data = np.vstack([observations['reference_time'],
+                                     eval_wavelengths]).T
             new_fluxes, new_fluxvars = gp(pred_x_data, return_var=True)
 
             observations['flux'] = new_fluxes
