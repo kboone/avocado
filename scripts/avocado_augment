@@ -2,8 +2,33 @@
 """Augment a dataset using avocado"""
 
 import argparse
+from tqdm import tqdm
 
 import avocado
+
+def process_chunk(augmentor, chunk, args, verbose=True):
+    # Load the reference dataset
+    if verbose:
+        print("Loading reference dataset...")
+    dataset = avocado.load(
+        args.reference_dataset,
+        chunk=chunk,
+        num_chunks=args.num_chunks,
+    )
+
+    # Augment the dataset
+    if verbose:
+        print("Augmenting the dataset...")
+    augmented_dataset = augmentor.augment_dataset(
+        args.augmented_dataset,
+        dataset,
+        args.num_augments,
+    )
+
+    # Save the augmented dataset
+    if verbose:
+        print("Saving the augmented dataset...")
+    augmented_dataset.write()
 
 
 if __name__ == "__main__":
@@ -26,45 +51,35 @@ if __name__ == "__main__":
         '(default: %(default)s)',
     )
     parser.add_argument(
-        '--chunk',
-        type=int,
-        default=None,
-        help='If set, process the dataset by chunks. This sets the chunk '
-        'number of the dataset to use.',
-    )
-    parser.add_argument(
         '--num_chunks',
         type=int,
         default=100,
-        help='If chunk is set, this is the total number of chunks to use for '
-        'processing the dataset. (default: %(default)s)',
+        help='The dataset will be processed in chunks to avoid loading all of '
+        'the data at once. This sets the total number of chunks to use. '
+        '(default: %(default)s)',
+    )
+    parser.add_argument(
+        '--chunk',
+        type=int,
+        default=None,
+        help='If set, only process this chunk of the dataset. This is '
+        'intended to be used to split processing into multiple jobs.'
     )
 
     args = parser.parse_args()
-
-    # Load the reference dataset
-    print("Loading reference dataset...")
-    dataset = avocado.load(
-        args.reference_dataset,
-        chunk=args.chunk,
-        num_chunks=args.num_chunks,
-    )
 
     # Load the augmentor. For now, we only have the PLAsTiCC augmentor although
     # this could be an option in the future.
     print("Loading augmentor...")
     augmentor = avocado.plasticc.PlasticcAugmentor()
 
-    # Augment the dataset
-    print("Augmenting the dataset...")
-    augmented_dataset = augmentor.augment_dataset(
-        args.augmented_dataset,
-        dataset,
-        args.num_augments,
-    )
-
-    # Save the augmented dataset
-    print("Saving the augmented dataset...")
-    augmented_dataset.write()
+    if args.chunk:
+        # Process a single chunk
+        process_chunk(augmentor, args.chunk, args)
+    else:
+        # Process all chunks
+        print("Processing the dataset in %d chunks..." % args.num_chunks)
+        for chunk in tqdm(range(args.num_chunks)):
+            process_chunk(augmentor, chunk, args, verbose=False)
 
     print("Done!")
