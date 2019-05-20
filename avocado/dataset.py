@@ -46,6 +46,9 @@ class Dataset():
         self.chunk = chunk
         self.num_chunks = num_chunks
 
+        self.predictions = None
+        self.classifier = None
+
         if observations is None:
             self.objects = objects
         else:
@@ -183,7 +186,7 @@ class Dataset():
 
         return dataset
 
-    def label_folds(self, num_folds=None, random_state=1):
+    def label_folds(self, num_folds=None, random_state=None):
         """Separate the dataset into groups for k-folding
 
         This is only applicable to training datasets that have assigned
@@ -198,6 +201,7 @@ class Dataset():
             The number of folds to use. Default: settings['num_folds']
         random_state : int (optional)
             The random number initializer to use for splitting the folds.
+            Default: settings['fold_random_state'].
 
         Returns
         -------
@@ -207,6 +211,9 @@ class Dataset():
         """
         if num_folds is None:
             num_folds = settings['num_folds']
+
+        if random_state is None:
+            random_state = settings['fold_random_state']
 
         if 'category' not in self.metadata:
             raise AvocadoException(
@@ -499,3 +506,47 @@ class Dataset():
         )
 
         return self.raw_features
+
+    def predict(self, classifier):
+        """Generate predictions using a classifier.
+
+        Parameters
+        ----------
+        classifier : :class:`Classifier`
+            The classifier to use.
+
+        Returns
+        -------
+        predictions : :class:`pandas.DataFrame`
+            A pandas Series with the predictions for each class.
+        """
+        self.predictions = classifier.predict(self)
+        self.classifier = classifier
+
+        return self.predictions
+
+    def write_predictions(self, **kwargs):
+        """Write predictions for this classifier to disk.
+
+        The predictions will be stored in the predictions directory using both
+        the dataset and classifier's names.
+
+        Parameters
+        ----------
+        **kwargs
+            Additional arguments to be passed to `utils.write_dataframe`
+        """
+        filename = "predictions_%s_%s.h5" % (
+            self.name, self.classifier.name
+        )
+        predictions_path = os.path.join(settings['predictions_directory'],
+                                        filename)
+
+        write_dataframe(
+            predictions_path,
+            self.predictions,
+            'predictions',
+            chunk=self.chunk,
+            num_chunks=self.num_chunks,
+            **kwargs
+        )

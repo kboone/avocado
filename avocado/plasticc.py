@@ -612,7 +612,7 @@ class PlasticcFeaturizer(Featurizer):
         This method should take a DataFrame or dictionary of raw features,
         produced by `featurize`, and output a list of processed features that
         can be fed to a classifier.
-        
+
         Parameters
         ----------
         raw_features : pandas.DataFrame or dict
@@ -827,3 +827,37 @@ def find_time_to_fractions(fluxes, fractions, forward=True):
             break
 
     return result
+
+
+def add_class_99_predictions(dataset, predictions):
+    """Add predictions for class 99 objects for the Kaggle PLAsTiCC challenge
+    using a predefined formula.
+
+    This formula was tuned to the PLAsTiCC dataset, and is not a real method of
+    identifying new objects in a dataset.
+    """
+    predictions = predictions.copy()
+
+    if 99 in predictions:
+        # Remove old 99 prediction and renormalize
+        predictions[99] = 0.
+        norm = np.sum(predictions, axis=1)
+        predictions = predictions.div(norm, axis=0)
+
+    # For extragalactic objects, use a fixed formula. Note: for simplicity we
+    # do all objects here, including galactic, and then overwite the galactic
+    # ones below.
+    predictions[99] = (
+        1. * predictions[42]
+        + 0.6 * predictions[62]
+        + 0.2 * predictions[52]
+        + 0.2 * predictions[95]
+    )
+
+    # For galactic objects, use a flat probability.
+    predictions.loc[dataset.metadata['galactic'], 99] = 0.04
+
+    norm = np.sum(predictions, axis=1)
+    predictions = predictions.div(norm, axis=0)
+
+    return predictions

@@ -13,4 +13,8 @@ from . import plasticc
 # Expose the load method of Dataset
 load = Dataset.load
 
+# Expose the load method of Classifier
+load_classifier = Classifier.load
+
+
 __all__ = ['Dataset', 'AstronomicalObject']

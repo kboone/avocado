@@ -3,6 +3,7 @@
     "data_directory": "./data",
 
     "num_folds": 5,
+    "fold_random_state": 1,
 
     "augment_retries": 10,
 
@@ -10,6 +11,8 @@
     "features_tag": "features_v1",
 
     "classifier_directory": "./classifiers",
+
+    "predictions_directory": "./predictions",
 
     "RAW_DATA_DIR": "./data",
     "RAW_TRAINING_PATH": "./data/training_set.csv",

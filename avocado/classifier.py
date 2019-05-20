@@ -1,26 +1,36 @@
 import numpy as np
 import os
 import pandas as pd
+from tqdm import tqdm
 
 from .settings import settings
 
-def get_classifier_path(tag):
+def get_classifier_path(name):
     """Get the path to where a classifier should be stored on disk
 
     Parameters
     ----------
-    tag : str
-        The unique tag for the classifier.
+    name : str
+        The unique name for the classifier.
     """
     classifier_directory = settings['classifier_directory']
     classifier_path = os.path.join(classifier_directory,
-                                   'classifier_%s.pkl' % tag)
+                                   'classifier_%s.pkl' % name)
 
     return classifier_path
 
 
 class Classifier():
-    """Classifier used to classify the different objects in a dataset."""
+    """Classifier used to classify the different objects in a dataset.
+
+    Parameters
+    ----------
+    name : str
+        The name of the classifier.
+    """
+    def __init__(self, name):
+        self.name = name
+
     def train(self, dataset):
         """Train the classifier on a dataset
 
@@ -50,20 +60,25 @@ class Classifier():
         """
         raise NotImplementedError
 
-    def write(self, tag, overwrite=False):
+    @property
+    def path(self):
+        """Get the path to where a classifier should be stored on disk"""
+        return get_classifier_path(self.name)
+
+    def write(self, overwrite=False):
         """Write a trained classifier to disk
 
         Parameters
         ----------
-        tag : str
-            A unique tag used to identify the classifier.
+        name : str
+            A unique name used to identify the classifier.
         overwrite : bool (optional)
-            If a classifier with the same tag already exists on disk and this
+            If a classifier with the same name already exists on disk and this
             is True, overwrite it. Otherwise, raise an AvocadoException.
         """
         import pickle
 
-        path = get_classifier_path(tag)
+        path = self.path
 
         # Make the containing directory if it doesn't exist yet.
         directory = os.path.dirname(path)
@@ -84,17 +99,17 @@ class Classifier():
             pickle.dump(self, output_file)
 
     @classmethod
-    def load(cls, tag):
+    def load(cls, name):
         """Load a classifier that was previously saved to disk
 
         Parameters
         ----------
-        tag : str
-            A unique tag used to identify the classifier to load.
+        name : str
+            A unique name used to identify the classifier to load.
         """
         import pickle
 
-        path = get_classifier_path(tag)
+        path = get_classifier_path(name)
 
         # Write the classifier to a pickle file
         with open(path, 'rb') as input_file:
@@ -118,7 +133,9 @@ class LightGBMClassifier(Classifier):
         Weights to use for each class. If not set, equal weights are assumed
         for each class.
     """
-    def __init__(self, featurizer, class_weights=None):
+    def __init__(self, name, featurizer, class_weights=None):
+        super().__init__(name)
+
         self.featurizer = featurizer
         self.class_weights = class_weights
 
@@ -159,7 +176,7 @@ class LightGBMClassifier(Classifier):
 
     def train(self, dataset, num_folds=None, random_state=None, **kwargs):
         """Train the classifier on a dataset
-        
+
         Parameters
         ----------
         dataset : :class:`Dataset`
@@ -168,6 +185,7 @@ class LightGBMClassifier(Classifier):
             The number of folds to use. Default: settings['num_folds']
         random_state : int (optional)
             The random number initializer to use for splitting the folds.
+            Default: settings['fold_random_state']
         **kwargs
             Additional parameters to pass to the LightGBM classifier.
         """
@@ -265,7 +283,7 @@ class LightGBMClassifier(Classifier):
 
         predictions = 0
 
-        for classifier in self.classifiers:
+        for classifier in tqdm(self.classifiers):
             fold_scores = classifier.predict_proba(
                 features, raw_score=True,
                 num_iteration=classifier.best_iteration_
@@ -312,7 +330,7 @@ def fit_lightgbm_classifier(train_features, train_classes, train_weights,
         The fitted LightGBM classifier
     """
     import lightgbm as lgb
-    
+
     lgb_params = {
         'boosting_type': 'gbdt',
         'objective': 'multiclass',
