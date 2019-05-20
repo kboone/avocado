@@ -1,0 +1,53 @@
+#!/usr/bin/env python
+"""Generate predictions for a dataset using avocado."""
+
+import argparse
+
+import avocado
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        'dataset',
+        help='Name of the dataset to train on.'
+    )
+    parser.add_argument(
+        'classifier',
+        help='Name of the classifier to use.'
+    )
+    parser.add_argument(
+        '--chunk',
+        type=int,
+        default=None,
+        help='If set, process the dataset by chunks. This sets the chunk '
+        'number of the dataset to use.',
+    )
+    parser.add_argument(
+        '--num_chunks',
+        type=int,
+        default=100,
+        help='If chunk is set, this is the total number of chunks to use for '
+        'processing the dataset. (default: %(default)s)',
+    )
+
+    args = parser.parse_args()
+
+    # Load the dataset
+    print("Loading dataset...")
+    dataset = avocado.load(args.dataset, metadata_only=True, chunk=args.chunk,
+                           num_chunks=args.num_chunks)
+    dataset.load_raw_features()
+
+    # Load the classifier
+    classifier = avocado.load_classifier(args.classifier)
+
+    # Generate predictions.
+    print("Generating predictions...")
+    predictions = dataset.predict(classifier)
+
+    # Write the predictions to disk.
+    print("Writing out predictions...")
+    dataset.write_predictions()
+
+    print("Done!")
