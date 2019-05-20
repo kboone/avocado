@@ -1,11 +1,31 @@
 import numpy as np
+import os
 import pandas as pd
+
+from .settings import settings
+
+def get_classifier_path(tag):
+    """Get the path to where a classifier should be stored on disk
+
+    Parameters
+    ----------
+    tag : str
+        The unique tag for the classifier.
+    """
+    classifier_directory = settings['classifier_directory']
+    classifier_path = os.path.join(classifier_directory,
+                                   'classifier_%s.pkl' % tag)
+
+    return classifier_path
+
 
 class Classifier():
     """Classifier used to classify the different objects in a dataset."""
     def train(self, dataset):
         """Train the classifier on a dataset
-        
+
+        This needs to be implemented in subclasses.
+
         Parameters
         ----------
         dataset : :class:`Dataset`
@@ -13,18 +33,75 @@ class Classifier():
         """
         raise NotImplementedError
 
-    def write(self, tag):
-        """Write a trained classifier to disk
-        
-        TODO: Figure out API
+    def predict(self, dataset):
+        """Generate predictions for a dataset
+
+        This needs to be implemented in subclasses.
+
+        Parameters
+        ----------
+        dataset : :class:`Dataset`
+            The dataset to generate predictions for.
+
+        Returns
+        -------
+        predictions : :class:`pandas.DataFrame`
+            A pandas Series with the predictions for each class.
         """
+        raise NotImplementedError
+
+    def write(self, tag, overwrite=False):
+        """Write a trained classifier to disk
+
+        Parameters
+        ----------
+        tag : str
+            A unique tag used to identify the classifier.
+        overwrite : bool (optional)
+            If a classifier with the same tag already exists on disk and this
+            is True, overwrite it. Otherwise, raise an AvocadoException.
+        """
+        import pickle
+
+        path = get_classifier_path(tag)
+
+        # Make the containing directory if it doesn't exist yet.
+        directory = os.path.dirname(path)
+        os.makedirs(directory, exist_ok=True)
+
+        # Handle if the file already exists.
+        if os.path.exists(path):
+            if overwrite:
+                logger.warning("Overwriting %s..." % path)
+                os.remove(path)
+            else:
+                raise AvocadoException(
+                    "Dataset %s already exists! Can't write." % path
+                )
+
+        # Write the classifier to a pickle file
+        with open(path, 'wb') as output_file:
+            pickle.dump(self, output_file)
 
     @classmethod
     def load(cls, tag):
         """Load a classifier that was previously saved to disk
-        
-        TODO: Figure out API
+
+        Parameters
+        ----------
+        tag : str
+            A unique tag used to identify the classifier to load.
         """
+        import pickle
+
+        path = get_classifier_path(tag)
+
+        # Write the classifier to a pickle file
+        with open(path, 'rb') as input_file:
+            classifier = pickle.load(input_file)
+
+        return classifier
+
 
 class LightGBMClassifier(Classifier):
     """Feature based classifier using LightGBM to classify objects.
@@ -32,7 +109,7 @@ class LightGBMClassifier(Classifier):
     This uses a weighted multi-class logarithmic loss that normalizes for the
     total counts of each class. This classifier is optimized for the metric
     used in the PLAsTiCC Kaggle challenge.
-    
+
     Parameters
     ----------
     featurizer : :class:`Featurizer`
@@ -148,11 +225,63 @@ class LightGBMClassifier(Classifier):
 
             classifiers.append(classifier)
 
+        # Statistics on out-of-sample predictions
+        total_logloss = weighted_multi_logloss(
+            object_classes, predictions, self.class_weights
+        )
+        print('Total weighted log-loss: %.5f ' % total_logloss)
+
+        # Original sample only (no augments)
+        if 'reference_object_id' in dataset.metadata:
+            original_mask = dataset.metadata['reference_object_id'].isnull()
+            original_logloss = weighted_multi_logloss(
+                object_classes[original_mask],
+                predictions[original_mask],
+                self.class_weights
+            )
+            print('Original weighted log-loss: %.5f ' % original_logloss)
+
         self.importances = importances
-        self.out_of_fold_predictions = predictions
+        self.train_predictions = predictions
+        self.train_classes = object_classes
         self.classifiers = classifiers
 
         return classifiers
+
+    def predict(self, dataset):
+        """Generate predictions for a dataset
+
+        Parameters
+        ----------
+        dataset : :class:`Dataset`
+            The dataset to generate predictions for.
+
+        Returns
+        -------
+        predictions : :class:`pandas.DataFrame`
+            A pandas Series with the predictions for each class.
+        """
+        features = dataset.select_features(self.featurizer)
+
+        predictions = 0
+
+        for classifier in self.classifiers:
+            fold_scores = classifier.predict_proba(
+                features, raw_score=True,
+                num_iteration=classifier.best_iteration_
+            )
+
+            exp_scores = np.exp(fold_scores)
+
+            fold_predictions = exp_scores / np.sum(exp_scores, axis=1)[:, None]
+            predictions += fold_predictions
+
+        predictions /= len(self.classifiers)
+
+        predictions = pd.DataFrame(predictions, index=features.index,
+                                   columns=self.train_predictions.columns)
+
+        return predictions
 
 
 def fit_lightgbm_classifier(train_features, train_classes, train_weights,
@@ -217,3 +346,59 @@ def fit_lightgbm_classifier(train_features, train_classes, train_weights,
     classifier.fit(train_features, train_classes, **fit_params)
 
     return classifier
+
+
+def weighted_multi_logloss(true_classes, predictions, class_weights=None,
+                           return_class_contributions=False):
+    """Evaluate a weighted multi-class logloss function.
+
+    Parameters
+    ----------
+    true_classes : `pandas.Series`
+        A pandas series with the true class for each object
+    predictions : `pandas.DataFrame`
+        A pandas data frame with the predicted probabilities of each class for
+        every object. There should be one column for each class.
+    class_weights : dict (optional)
+        The weights to use for each class. If not specified, flat weights are
+        assumed for each class.
+    return_class_contributions : bool (optional)
+        If True, return a pandas Series with the contributions from each
+        class. Otherwise, return the sum over all classes (default).
+
+    Returns
+    -------
+    logloss : float or `pandas.Series`
+        By default, return the weighted multi-class logloss over all classes.
+        If return_class_contributions is True, this returns a pandas Series
+        with the individual contributions to the logloss from each class
+        instead.
+    """
+    class_loglosses = []
+    sum_weights = 0
+
+    for class_name in predictions.columns:
+        class_mask = true_classes == class_name
+
+        class_count = np.sum(class_mask)
+        class_predictions = predictions[class_name][class_mask]
+
+        class_logloss = -np.sum(np.log(class_predictions)) / class_count
+
+        if class_weights is not None:
+            weight = class_weights.get(class_name, 1)
+        else:
+            weight = 1
+
+        class_loglosses.append(weight * class_logloss)
+        sum_weights += weight
+
+    class_loglosses = pd.Series(
+        np.array(class_loglosses) / sum_weights,
+        index=predictions.columns
+    )
+
+    if return_class_contributions:
+        return class_loglosses
+    else:
+        return np.sum(class_loglosses)

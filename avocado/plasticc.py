@@ -18,6 +18,9 @@ plasticc_start_time = 59580
 plasticc_end_time = 60675
 plasticc_bands = ['lsstu', 'lsstg', 'lsstr', 'lssti', 'lsstz', 'lssty']
 
+plasticc_kaggle_weights = {6: 1, 15: 2, 16: 1, 42: 1, 52: 1, 53: 1, 62: 1, 64:
+                           2, 65: 1, 67: 1, 88: 1, 90: 1, 92: 1, 95: 1, 99: 2}
+
 
 class PlasticcAugmentor(Augmentor):
     """Implementation of an Augmentor for the PLAsTiCC dataset"""
@@ -205,7 +208,7 @@ class PlasticcAugmentor(Augmentor):
         # Choose whether the new object will be in the DDF or not.
         if reference_object.metadata['ddf']:
             # Most observations are WFD observations, so generate more of
-            # those. Thee DDF and WFD samples are effectively completely
+            # those. The DDF and WFD samples are effectively completely
             # different, so this ratio doesn't really matter.
             augmented_metadata['ddf'] = np.random.rand() > 0.8
         else:
@@ -648,20 +651,20 @@ class PlasticcFeaturizer(Featurizer):
                                     rf['min_flux_lssti'])
         )
         features['max_flux_ratio_red'] = (
-            rf['max_flux_lssty'] /
+            np.abs(rf['max_flux_lssty']) /
             (np.abs(rf['max_flux_lssty']) + np.abs(rf['max_flux_lssti']))
         )
         features['max_flux_ratio_blue'] = (
-            rf['max_flux_lsstg'] /
+            np.abs(rf['max_flux_lsstg']) /
             (np.abs(rf['max_flux_lssti']) + np.abs(rf['max_flux_lsstg']))
         )
 
         features['min_flux_ratio_red'] = (
-            -rf['min_flux_lssty'] /
+            np.abs(rf['min_flux_lssty']) /
             (np.abs(rf['min_flux_lssty']) + np.abs(rf['min_flux_lssti']))
         )
         features['min_flux_ratio_blue'] = (
-            -rf['min_flux_lsstg'] /
+            np.abs(rf['min_flux_lsstg']) /
             (np.abs(rf['min_flux_lssti']) + np.abs(rf['min_flux_lsstg']))
         )
 
@@ -673,26 +676,34 @@ class PlasticcFeaturizer(Featurizer):
         features['time_fwd_max_0.5'] = rf['time_fwd_max_0.5_lssti']
         features['time_fwd_max_0.2'] = rf['time_fwd_max_0.2_lssti']
 
-        features['time_fwd_max_0.5_diff_red'] = \
-            rf['time_fwd_max_0.5_lssty'] - rf['time_fwd_max_0.5_lssti']
-        features['time_fwd_max_0.5_diff_blue'] = \
-            rf['time_fwd_max_0.5_lsstg'] - rf['time_fwd_max_0.5_lssti']
-        features['time_fwd_max_0.2_diff_red'] = \
-            rf['time_fwd_max_0.2_lssty'] - rf['time_fwd_max_0.2_lssti']
-        features['time_fwd_max_0.2_diff_blue'] = \
-            rf['time_fwd_max_0.2_lsstg'] - rf['time_fwd_max_0.2_lsstg']
+        features['time_fwd_max_0.5_ratio_red'] = (
+            rf['time_fwd_max_0.5_lssty']
+            / (rf['time_fwd_max_0.5_lssty'] + rf['time_fwd_max_0.5_lssti']))
+        features['time_fwd_max_0.5_ratio_blue'] = (
+            rf['time_fwd_max_0.5_lsstg']
+            / (rf['time_fwd_max_0.5_lsstg'] + rf['time_fwd_max_0.5_lssti']))
+        features['time_fwd_max_0.2_ratio_red'] = (
+            rf['time_fwd_max_0.2_lssty']
+            / (rf['time_fwd_max_0.2_lssty'] + rf['time_fwd_max_0.2_lssti']))
+        features['time_fwd_max_0.2_ratio_blue'] = (
+            rf['time_fwd_max_0.2_lsstg']
+            / (rf['time_fwd_max_0.2_lsstg'] + rf['time_fwd_max_0.2_lssti']))
 
         features['time_bwd_max_0.5'] = rf['time_bwd_max_0.5_lssti']
         features['time_bwd_max_0.2'] = rf['time_bwd_max_0.2_lssti']
 
-        features['time_bwd_max_0.5_diff_red'] = \
-            rf['time_bwd_max_0.5_lssty'] - rf['time_bwd_max_0.5_lssti']
-        features['time_bwd_max_0.5_diff_blue'] = \
-            rf['time_bwd_max_0.5_lsstg'] - rf['time_bwd_max_0.5_lssti']
-        features['time_bwd_max_0.2_diff_red'] = \
-            rf['time_bwd_max_0.2_lssty'] - rf['time_bwd_max_0.2_lssti']
-        features['time_bwd_max_0.2_diff_blue'] = \
-            rf['time_bwd_max_0.2_lsstg'] - rf['time_bwd_max_0.2_lsstg']
+        features['time_bwd_max_0.5_ratio_red'] = (
+            rf['time_bwd_max_0.5_lssty']
+            / (rf['time_bwd_max_0.5_lssty'] + rf['time_bwd_max_0.5_lssti']))
+        features['time_bwd_max_0.5_ratio_blue'] = (
+            rf['time_bwd_max_0.5_lsstg']
+            / (rf['time_bwd_max_0.5_lsstg'] + rf['time_bwd_max_0.5_lssti']))
+        features['time_bwd_max_0.2_ratio_red'] = (
+            rf['time_bwd_max_0.2_lssty']
+            / (rf['time_bwd_max_0.2_lssty'] + rf['time_bwd_max_0.2_lssti']))
+        features['time_bwd_max_0.2_ratio_blue'] = (
+            rf['time_bwd_max_0.2_lsstg']
+            / (rf['time_bwd_max_0.2_lsstg'] + rf['time_bwd_max_0.2_lssti']))
 
         features['frac_s2n_5'] = rf['count_s2n_5'] / rf['count']
         features['frac_s2n_-5'] = rf['count_s2n_-5'] / rf['count']
@@ -723,10 +734,9 @@ class PlasticcFeaturizer(Featurizer):
             rf['peaks_pos_lssty_frac_2']
         ]
 
-        if np.all(np.isnan(all_peak_pos_frac_2)):
-            features['peak_frac_2'] = np.nan
-        else:
-            features['peak_frac_2'] = np.nanmedian(all_peak_pos_frac_2)
+        with np.warnings.catch_warnings():
+            np.warnings.filterwarnings('ignore', r'All-NaN slice encountered')
+            features['peak_frac_2'] = np.nanmedian(all_peak_pos_frac_2, axis=0)
 
         features['total_s2n'] = np.sqrt(
             rf['total_s2n_lsstu']**2 +

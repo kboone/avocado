@@ -9,6 +9,8 @@
     "features_directory": "./features",
     "features_tag": "features_v1",
 
+    "classifier_directory": "./classifiers",
+
     "RAW_DATA_DIR": "./data",
     "RAW_TRAINING_PATH": "./data/training_set.csv",
     "RAW_TRAINING_METADATA_PATH": "./data/training_set_metadata.csv",
