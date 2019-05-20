@@ -33,7 +33,7 @@ class Featurizer():
         This method should take a DataFrame or dictionary of raw features,
         produced by `featurize`, and output a list of processed features that
         can be fed to a classifier.
-        
+
         Parameters
         ----------
         raw_features : pandas.DataFrame or dict
