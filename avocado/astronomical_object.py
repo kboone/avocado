@@ -36,7 +36,7 @@ class AstronomicalObject():
         For training data objects, the following keys are assumed to exist in
         the metadata:
         - redshift: The true redshift of the object.
-        - category: The true category label of the object.
+        - class: The true class label of the object.
 
     observations : pandas.DataFrame
         Observations of the object's light curve. This should be a pandas
@@ -391,7 +391,7 @@ class AstronomicalObject():
         # Try to print out specific keys in a nice order. If these keys aren't
         # available, then we skip them. The rest of the keys are printed out in
         # a random order afterwards.
-        ordered_keys = ['object_id', 'category', 'galactic', 'fold',
+        ordered_keys = ['object_id', 'class', 'galactic', 'fold',
                         'redshift', 'host_specz', 'host_photoz',
                         'host_photoz_error']
         for key in ordered_keys:

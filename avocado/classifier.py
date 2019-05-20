@@ -156,7 +156,7 @@ class LightGBMClassifier(Classifier):
         weights : `pandas.Series`
             The weights that should be used for classification.
         """
-        object_classes = dataset.metadata['category']
+        object_classes = dataset.metadata['class']
         class_counts = object_classes.value_counts()
 
         norm_class_weights = {}
@@ -197,7 +197,7 @@ class LightGBMClassifier(Classifier):
 
         weights = self.evaluate_weights(dataset)
 
-        object_classes = dataset.metadata['category']
+        object_classes = dataset.metadata['class']
         classes = np.unique(object_classes)
 
         importances = pd.DataFrame()

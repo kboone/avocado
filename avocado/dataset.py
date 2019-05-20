@@ -190,7 +190,7 @@ class Dataset():
         """Separate the dataset into groups for k-folding
 
         This is only applicable to training datasets that have assigned
-        categories.
+        classes.
 
         If the dataset is an augmented dataset, we ensure that the
         augmentations of the same object stay in the same fold.
@@ -215,9 +215,9 @@ class Dataset():
         if random_state is None:
             random_state = settings['fold_random_state']
 
-        if 'category' not in self.metadata:
+        if 'class' not in self.metadata:
             raise AvocadoException(
-                "Dataset %s does not have labeled categories! Can't separate "
+                "Dataset %s does not have labeled classes! Can't separate "
                 "into folds." % self.name
             )
 
@@ -231,7 +231,7 @@ class Dataset():
             is_augmented = False
             reference_metadata = self.metadata
 
-        reference_classes = reference_metadata['category']
+        reference_classes = reference_metadata['class']
         folds = StratifiedKFold(n_splits=num_folds, shuffle=True,
                                 random_state=random_state)
         fold_map = {}
@@ -251,21 +251,21 @@ class Dataset():
 
         return fold_indices
 
-    def get_object(self, index=None, category=None, object_id=None):
+    def get_object(self, index=None, object_class=None, object_id=None):
         """Parse keywords to pull a specific object out of the dataset
 
         Parameters
         ==========
         index : int (optional)
             The index of the object in the dataset in the range
-            [0, num_objects-1]. If a specific category is specified, then the
-            index only counts objects of that category.
-        category : int or str (optional)
-            Filter for objects of a specific category. If this is specified,
-            then index must also be specified.
+            [0, num_objects-1]. If a specific object_class is specified, then
+            the index only counts objects of that class.
+        object_class : int or str (optional)
+            Filter for objects of a specific class. If this is specified, then
+            index must also be specified.
         object_id : str (optional)
             Retrieve an object with this specific object_id. If index or
-            category is specified, then object_id cannot also be specified.
+            object_class is specified, then object_id cannot also be specified.
 
         Returns
         =======
@@ -275,24 +275,23 @@ class Dataset():
         # Check to make sure that we have a valid object specification.
         base_error = "Error finding object! "
         if object_id is not None:
-            if index is not None or category is not None:
+            if index is not None or object_class is not None:
                 raise AvocadoException(
                     base_error + "If object_id is specified, can't also "
-                    "specify index or category!"
+                    "specify index or object_class!"
                 )
 
-        if category is not None and index is None:
+        if object_class is not None and index is None:
             raise AvocadoException(
-                base_error + "Must specify index if category is specified!"
+                base_error + "Must specify index if object_class is specified!"
             )
 
         # Figure out the index to use.
-        if category is not None:
+        if object_class is not None:
             # Figure out the target object_id and use that to get the index.
-            category_index = index
-            category_meta = self.metadata[
-                self.metadata['category'] == category]
-            object_id = category_meta.index[category_index]
+            class_index = index
+            class_meta = self.metadata[self.metadata['class'] == object_class]
+            object_id = class_meta.index[class_index]
 
         if object_id is not None:
             try:
@@ -304,7 +303,8 @@ class Dataset():
 
         return self.objects[index]
 
-    def _get_object(self, index=None, category=None, object_id=None, **kwargs):
+    def _get_object(self, index=None, object_class=None, object_id=None,
+                    **kwargs):
         """Wrapper around get_object that returns unused kwargs.
 
         This function is used for the common situation of pulling an object out
@@ -319,7 +319,7 @@ class Dataset():
         **kwargs
             Additional arguments passed to the function that weren't used.
         """
-        return self.get_object(index, category, object_id), kwargs
+        return self.get_object(index, object_class, object_id), kwargs
 
     def plot_light_curve(self, *args, **kwargs):
         """Plot the light curve for an object in the dataset.
@@ -339,26 +339,26 @@ class Dataset():
         """
         from ipywidgets import interact, IntSlider, Dropdown
 
-        categories = {'' : None}
-        for category in np.unique(self.metadata['category']):
-            categories[category] = category
+        object_classes = {'' : None}
+        for object_class in np.unique(self.metadata['class']):
+            object_classes[object_class] = object_class
 
         idx_widget = IntSlider(min=0, max=1)
-        category_widget = Dropdown(options=categories, index=0)
+        class_widget = Dropdown(options=object_classes, index=0)
 
         def update_idx_range(*args):
-            if category_widget.value is None:
+            if class_widget.value is None:
                 idx_widget.max = len(self.metadata) - 1
             else:
-                idx_widget.max = np.sum(self.metadata['category'] ==
-                                        category_widget.value) - 1
+                idx_widget.max = np.sum(self.metadata['class'] ==
+                                        class_widget.value) - 1
 
-        category_widget.observe(update_idx_range, 'value')
+        class_widget.observe(update_idx_range, 'value')
 
         update_idx_range()
 
         interact(self.plot_light_curve, index=idx_widget,
-                 category=category_widget, show_gp=True, uncertainties=True,
+                 object_class=class_widget, show_gp=True, uncertainties=True,
                  verbose=False, subtract_background=True)
 
     def write(self, **kwargs):

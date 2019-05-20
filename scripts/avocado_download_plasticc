@@ -63,7 +63,7 @@ def update_plasticc_metadata(metadata):
     """
     # Rename columns in the metadata table to match the avocado conventions.
     metadata_name_map = {
-        'true_target': 'category',
+        'true_target': 'class',
         'hostgal_photoz_err': 'host_photoz_error',
         'hostgal_photoz': 'host_photoz',
         'hostgal_specz': 'host_specz',
