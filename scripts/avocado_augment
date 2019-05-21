@@ -44,7 +44,7 @@ if __name__ == "__main__":
     parser.add_argument(
         '--num_augments',
         type=int,
-        default=50,
+        default=100,
         help='The number of times to use each object in the dataset as a '
         'reference for augmentation. Note that augmentation sometimes fails, '
         'so this is the number of tries, not the number of sucesses. '
@@ -73,7 +73,7 @@ if __name__ == "__main__":
     print("Loading augmentor...")
     augmentor = avocado.plasticc.PlasticcAugmentor()
 
-    if args.chunk:
+    if args.chunk is not None:
         # Process a single chunk
         process_chunk(augmentor, args.chunk, args)
     else:

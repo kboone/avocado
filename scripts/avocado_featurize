@@ -63,7 +63,7 @@ if __name__ == "__main__":
     print("Loading featurizer...")
     featurizer = avocado.plasticc.PlasticcFeaturizer()
 
-    if args.chunk:
+    if args.chunk is not None:
         # Process a single chunk
         process_chunk(featurizer, args.chunk, args)
     else:
