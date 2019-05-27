@@ -4,6 +4,7 @@ import pandas as pd
 from tqdm import tqdm
 
 from .settings import settings
+from .utils import logger, AvocadoException
 
 def get_classifier_path(name):
     """Get the path to where a classifier should be stored on disk
