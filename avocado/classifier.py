@@ -375,7 +375,7 @@ class LightGBMClassifier(Classifier):
         folds = dataset.label_folds(num_folds, random_state)
         num_folds = np.max(folds) + 1
 
-        weights = self.weighting_function(dataset, self.class_weights)
+        object_weights = self.weighting_function(dataset, self.class_weights)
 
         object_classes = dataset.metadata['class']
         classes = np.unique(object_classes)
@@ -396,11 +396,11 @@ class LightGBMClassifier(Classifier):
 
             train_features = features[train_mask]
             train_classes = object_classes[train_mask]
-            train_weights = weights[train_mask]
+            train_weights = object_weights[train_mask]
 
             validation_features = features[validation_mask]
             validation_classes = object_classes[validation_mask]
-            validation_weights = weights[validation_mask]
+            validation_weights = object_weights[validation_mask]
 
             classifier = fit_lightgbm_classifier(
                 train_features, train_classes, train_weights,
@@ -425,9 +425,15 @@ class LightGBMClassifier(Classifier):
 
         # Statistics on out-of-sample predictions
         total_logloss = weighted_multi_logloss(
-            object_classes, predictions, self.class_weights
+            object_classes, predictions, object_weights=object_weights,
+            class_weights=self.class_weights
         )
-        print('Total weighted log-loss: %.5f ' % total_logloss)
+        unweighted_total_logloss = weighted_multi_logloss(
+            object_classes, predictions, class_weights=self.class_weights
+        )
+        print("Weighted log-loss:")
+        print("    With object weights:    %.5f" % total_logloss)
+        print("    Without object weights: %.5f" % unweighted_total_logloss)
 
         # Original sample only (no augments)
         if 'reference_object_id' in dataset.metadata:
@@ -435,9 +441,18 @@ class LightGBMClassifier(Classifier):
             original_logloss = weighted_multi_logloss(
                 object_classes[original_mask],
                 predictions[original_mask],
-                self.class_weights
+                object_weights=object_weights,
+                class_weights=self.class_weights
             )
-            print('Original weighted log-loss: %.5f ' % original_logloss)
+            unweighted_original_logloss = weighted_multi_logloss(
+                object_classes[original_mask],
+                predictions[original_mask],
+                class_weights=self.class_weights,
+            )
+            print("Original un-augmented dataset weighted log-loss:")
+            print("    With object weights:    %.5f" % original_logloss)
+            print("    Without object weights: %.5f" %
+                  unweighted_original_logloss)
 
         self.importances = importances
         self.train_predictions = predictions
