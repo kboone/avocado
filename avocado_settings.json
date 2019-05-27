@@ -12,5 +12,11 @@
 
     "classifier_directory": "./classifiers",
 
-    "predictions_directory": "./predictions"
+    "predictions_directory": "./predictions",
+
+    "redshift_weighting_group_key": "ddf",
+    "redshift_weighting_min_redshift": 0.1,
+    "redshift_weighting_max_redshift": 3.0,
+    "redshift_weighting_num_bins": 10,
+    "redshift_weighting_min_count_fraction": 0.01
 }

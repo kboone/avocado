@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 """Train a classifier using avocado.
 
-TODO: Add options for weights, classifier kind, featurizer, etc.
+For now, this only supports a LightGBM classifier with the PLAsTiCC featurizer.
 """
 
 import argparse
@@ -19,6 +19,12 @@ if __name__ == "__main__":
         'classifier',
         help='Name of the classifier to produce.'
     )
+    parser.add_argument(
+        '--weighting',
+        help='Kind of weighting to use. (default: %(default)s)',
+        default='flat',
+        choices=('flat', 'redshift'),
+    )
 
     args = parser.parse_args()
 
@@ -30,12 +36,22 @@ if __name__ == "__main__":
     print("Loading raw features...")
     dataset.load_raw_features()
 
+    # Figure out which weighting to use.
+    if args.weighting == 'flat':
+        weighting_function = avocado.evaluate_weights_flat
+    elif args.weighting == 'redshift':
+        weighting_function = avocado.evaluate_weights_redshift
+    else:
+        raise avocado.AvocadoException("Invalid weighting '%s'!" %
+                                       args.weighting)
+
     # Train the classifier
     print("Training classifier '%s'..." % args.classifier)
     classifier = avocado.LightGBMClassifier(
         args.classifier,
         avocado.plasticc.PlasticcFeaturizer(),
-        avocado.plasticc.plasticc_kaggle_weights
+        avocado.plasticc.plasticc_kaggle_weights,
+        weighting_function=weighting_function,
     )
     classifier.train(dataset)
 
