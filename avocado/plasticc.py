@@ -20,6 +20,8 @@ plasticc_bands = ['lsstu', 'lsstg', 'lsstr', 'lssti', 'lsstz', 'lssty']
 
 plasticc_kaggle_weights = {6: 1, 15: 2, 16: 1, 42: 1, 52: 1, 53: 1, 62: 1, 64:
                            2, 65: 1, 67: 1, 88: 1, 90: 1, 92: 1, 95: 1, 99: 2}
+plasticc_flat_weights = {6: 1, 15: 1, 16: 1, 42: 1, 52: 1, 53: 1, 62: 1, 64: 1,
+                         65: 1, 67: 1, 88: 1, 90: 1, 92: 1, 95: 1, 99: 0}
 
 
 class PlasticcAugmentor(Augmentor):

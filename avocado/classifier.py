@@ -61,7 +61,8 @@ def evaluate_weights_flat(dataset, class_weights=None):
 
 def evaluate_weights_redshift(
         dataset, class_weights=None, group_key=None, min_redshift=None,
-        max_redshift=None, num_bins=None, min_count_fraction=None):
+        max_redshift=None, num_bins=None, min_count_fraction=None,
+        redshift_key=None):
     """Evaluate redshift-weighted weights to use to generate a
     rates-independent classifier.
 
@@ -98,11 +99,19 @@ def evaluate_weights_redshift(
     num_bins : int (optional)
         The number of redshift bins to use. By default,
         settings['redshift_weighting_num_bins'] will be used.
-    min_count_fraction : float(optional)
+    min_count_fraction : float (optional)
         The minimum number of counts to use for weighting in a bin, as a
         fraction of the total number of objects of all classes in the same
         redshift bin and group. By default,
         settings['redshift_weighting_min_count_fraction'] will be used.
+    redshift_key : str (optional)
+        The key to use for determining the redshift. When training a
+        classifier, this should typically be the spectroscopic redshift of the
+        host galaxy because that is the measured "true" redshift for real
+        samples. When evaluating on simulated data without spectroscopic
+        redshifts, this might need to be changed to the true simulated
+        redshift. By default, settings['redshift_weighting_redshift_key'] will
+        be used.
 
     Returns
     -------
@@ -119,6 +128,8 @@ def evaluate_weights_redshift(
         num_bins = settings['redshift_weighting_num_bins']
     if min_count_fraction is None:
         min_count_fraction = settings['redshift_weighting_min_count_fraction']
+    if redshift_key is None:
+        redshift_key = settings['redshift_weighting_redshift_key']
 
     # Create the initial bin range
     redshift_bins = np.logspace(np.log10(min_redshift), np.log10(max_redshift),
@@ -134,7 +145,7 @@ def evaluate_weights_redshift(
 
     # Figure out which redshift bin each object falls in.
     redshift_indices = np.searchsorted(
-        redshift_bins, dataset.metadata['host_specz']) - 1
+        redshift_bins, dataset.metadata[redshift_key]) - 1
 
     # Figure out how many different classes there are, and create a mapping for
     # them.
@@ -166,13 +177,15 @@ def evaluate_weights_redshift(
 
     # Count how many extragalactic bins are actually populated. This is
     # used to set the scales so that they roughly match what we have
-    # for the non-redshift-weighted metric. This is done so that we can
-    # use the same hyperparameters. For galactic objects, we don't need
-    # to do anything because all of the observations end up in the same
-    # bin. For extragalactic objects, we need to take into account the
-    # fact that the objects are now split up between many different
-    # bins. Get an estimate of how many bins are populated, and apply
-    # that to the data.
+    # for the non-redshift-weighted metric. Note that the metric evaluation
+    # won't be affected by this scale since for each class we divide by the
+    # total weights of that class. However, this scaling is necessary if we
+    # want to use the same hyperparameters for classification. For galactic
+    # objects, we don't need to do anything because all of the observations end
+    # up in the same bin. For extragalactic objects, we need to take into
+    # account the fact that the objects are now split up between many different
+    # bins. Get an estimate of how many bins are populated, and apply that to
+    # the data.
     num_extgal_bins = np.sum(counts[:, 1:, :] > 1e-4 * total_counts)
     class_extgal_counts = np.sum(np.sum(counts[:, 1:, :], axis=0), axis=0)
     class_gal_counts = np.sum(counts[:, 0, :], axis=0)
@@ -339,7 +352,7 @@ class LightGBMClassifier(Classifier):
 
         self.featurizer = featurizer
         self.class_weights = class_weights
-        self.weighting_function = evaluate_weights_flat
+        self.weighting_function = weighting_function
 
     def train(self, dataset, num_folds=None, random_state=None, **kwargs):
         """Train the classifier on a dataset
@@ -362,7 +375,7 @@ class LightGBMClassifier(Classifier):
         folds = dataset.label_folds(num_folds, random_state)
         num_folds = np.max(folds) + 1
 
-        weights = self.weighting_function(dataset)
+        weights = self.weighting_function(dataset, self.class_weights)
 
         object_classes = dataset.metadata['class']
         classes = np.unique(object_classes)
@@ -534,8 +547,9 @@ def fit_lightgbm_classifier(train_features, train_classes, train_weights,
     return classifier
 
 
-def weighted_multi_logloss(true_classes, predictions, class_weights=None,
-                           return_class_contributions=False):
+def weighted_multi_logloss(true_classes, predictions, object_weights=None,
+                           class_weights=None,
+                           return_object_contributions=False):
     """Evaluate a weighted multi-class logloss function.
 
     Parameters
@@ -545,46 +559,73 @@ def weighted_multi_logloss(true_classes, predictions, class_weights=None,
     predictions : `pandas.DataFrame`
         A pandas data frame with the predicted probabilities of each class for
         every object. There should be one column for each class.
+    object_weights : dict (optional)
+        The weights to use for each object. These are used to weight objects
+        within a given class. The overall class weights will be normalized to
+        the values set by class_weights. If not specified, flat weights are
+        used.
     class_weights : dict (optional)
         The weights to use for each class. If not specified, flat weights are
         assumed for each class.
-    return_class_contributions : bool (optional)
-        If True, return a pandas Series with the contributions from each
-        class. Otherwise, return the sum over all classes (default).
+    return_object_contributions : bool (optional)
+        If True, return a pandas Series with the individual contributions from
+        each object. Otherwise, return the sum over all classes (default).
 
     Returns
     -------
     logloss : float or `pandas.Series`
         By default, return the weighted multi-class logloss over all classes.
-        If return_class_contributions is True, this returns a pandas Series
-        with the individual contributions to the logloss from each class
+        If return_object_contributions is True, this returns a pandas Series
+        with the individual contributions to the logloss from each object
         instead.
     """
-    class_loglosses = []
-    sum_weights = 0
-
-    for class_name in predictions.columns:
-        class_mask = true_classes == class_name
-
-        class_count = np.sum(class_mask)
-        class_predictions = predictions[class_name][class_mask]
-
-        class_logloss = -np.sum(np.log(class_predictions)) / class_count
-
-        if class_weights is not None:
-            weight = class_weights.get(class_name, 1)
-        else:
-            weight = 1
-
-        class_loglosses.append(weight * class_logloss)
-        sum_weights += weight
-
-    class_loglosses = pd.Series(
-        np.array(class_loglosses) / sum_weights,
-        index=predictions.columns
+    object_loglosses = pd.Series(
+        1e10 * np.ones(len(true_classes)),
+        index=true_classes.index
     )
 
-    if return_class_contributions:
-        return class_loglosses
+    sum_class_weights = 0
+
+    for class_name in np.unique(true_classes):
+        class_mask = true_classes == class_name
+        class_count = np.sum(class_mask)
+
+        if object_weights is not None:
+            class_object_weights = object_weights[class_mask]
+        else:
+            class_object_weights = np.ones(class_count)
+
+        if class_weights is not None:
+            class_weight = class_weights.get(class_name, 1)
+        else:
+            class_weight = 1
+
+        if class_weight == 0:
+            # No weight for this class, ignore it.
+            object_loglosses[class_mask] = 0
+            continue
+
+        if class_name not in predictions.columns:
+            raise AvocadoException(
+                "No predictions available for class %s! Either compute them "
+                "or set the weight for that class to 0." % class_name
+            )
+
+        class_predictions = predictions[class_name][class_mask]
+
+        class_loglosses = (
+            -class_weight
+            * class_object_weights * np.log(class_predictions)
+            / np.sum(class_object_weights)
+        )
+
+        object_loglosses[class_mask] = class_loglosses
+
+        sum_class_weights += class_weight
+
+    object_loglosses /= sum_class_weights
+
+    if return_object_contributions:
+        return object_loglosses
     else:
-        return np.sum(class_loglosses)
+        return np.sum(object_loglosses)

@@ -20,8 +20,14 @@ if __name__ == "__main__":
         help='Name of the classifier to produce.'
     )
     parser.add_argument(
-        '--weighting',
-        help='Kind of weighting to use. (default: %(default)s)',
+        '--class_weighting',
+        help='Kind of per-class weighting to use. (default: %(default)s)',
+        default='flat',
+        choices=('flat', 'kaggle'),
+    )
+    parser.add_argument(
+        '--object_weighting',
+        help='Kind of per-object weighting to use. (default: %(default)s)',
         default='flat',
         choices=('flat', 'redshift'),
     )
@@ -36,13 +42,22 @@ if __name__ == "__main__":
     print("Loading raw features...")
     dataset.load_raw_features()
 
-    # Figure out which weighting to use.
-    if args.weighting == 'flat':
+    # Figure out which weightings to use.
+    if args.class_weighting == 'flat':
+        class_weights = None
+    elif args.class_weighting == 'kaggle':
+        class_weights = avocado.plasticc.plasticc_kaggle_weights
+    else:
+        raise avocado.AvocadoException("Invalid class weighting '%s'!" %
+                                       args.weighting)
+
+
+    if args.object_weighting == 'flat':
         weighting_function = avocado.evaluate_weights_flat
-    elif args.weighting == 'redshift':
+    elif args.object_weighting == 'redshift':
         weighting_function = avocado.evaluate_weights_redshift
     else:
-        raise avocado.AvocadoException("Invalid weighting '%s'!" %
+        raise avocado.AvocadoException("Invalid object weighting '%s'!" %
                                        args.weighting)
 
     # Train the classifier
@@ -50,7 +65,7 @@ if __name__ == "__main__":
     classifier = avocado.LightGBMClassifier(
         args.classifier,
         avocado.plasticc.PlasticcFeaturizer(),
-        avocado.plasticc.plasticc_kaggle_weights,
+        class_weights=class_weights,
         weighting_function=weighting_function,
     )
     classifier.train(dataset)

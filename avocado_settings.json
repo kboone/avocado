@@ -18,5 +18,6 @@
     "redshift_weighting_min_redshift": 0.1,
     "redshift_weighting_max_redshift": 3.0,
     "redshift_weighting_num_bins": 10,
-    "redshift_weighting_min_count_fraction": 0.01
+    "redshift_weighting_min_count_fraction": 0.01,
+    "redshift_weighting_redshift_key": "host_specz"
 }
