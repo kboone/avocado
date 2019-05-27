@@ -441,7 +441,7 @@ class LightGBMClassifier(Classifier):
             original_logloss = weighted_multi_logloss(
                 object_classes[original_mask],
                 predictions[original_mask],
-                object_weights=object_weights,
+                object_weights=object_weights[original_mask],
                 class_weights=self.class_weights
             )
             unweighted_original_logloss = weighted_multi_logloss(
