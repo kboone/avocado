@@ -23,7 +23,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     # Load the dataset
-    print("Loading dataset...")
+    print("Loading dataset '%s'..." % args.dataset)
     dataset = avocado.load(args.dataset, metadata_only=True)
 
     # Load the dataset raw features
@@ -31,7 +31,7 @@ if __name__ == "__main__":
     dataset.load_raw_features()
 
     # Train the classifier
-    print("Training the classifier...")
+    print("Training classifier '%s'..." % args.classifier)
     classifier = avocado.LightGBMClassifier(
         args.classifier,
         avocado.plasticc.PlasticcFeaturizer(),

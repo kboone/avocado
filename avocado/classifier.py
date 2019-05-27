@@ -20,6 +20,45 @@ def get_classifier_path(name):
     return classifier_path
 
 
+def evaluate_weights_flat(dataset, class_weights=None):
+    """Evaluate the weights to use for classification on a dataset.
+
+    The weights are set to normalize each class to have same weight with the
+    same weight for each object in a class. If class weights are set, those
+    weights are applied after normalization.
+
+    Parameters
+    ----------
+    dataset : :class:`Dataset`
+        The dataset to evaluate weights on.
+    class_weights : dict (optional)
+        Weights to use for each class. If not set, equal weights are assumed
+        for each class.
+
+    Returns
+    -------
+    weights : `pandas.Series`
+        The weights that should be used for classification.
+    """
+    object_classes = dataset.metadata['class']
+    class_counts = object_classes.value_counts()
+
+    norm_class_weights = {}
+    for class_name, class_count in class_counts.items():
+        if class_weights is not None:
+            class_weight = class_weights[class_name]
+        else:
+            class_weight = 1
+
+        norm_class_weights[class_name] = (
+            class_weight * len(object_classes) / class_count
+        )
+
+    weights = object_classes.map(norm_class_weights)
+
+    return weights
+
+
 class Classifier():
     """Classifier used to classify the different objects in a dataset.
 
@@ -132,47 +171,21 @@ class LightGBMClassifier(Classifier):
     class_weights : dict (optional)
         Weights to use for each class. If not set, equal weights are assumed
         for each class.
+    weights_function : function (optional)
+        Function to use to evaluate weights. By default,
+        `evaluate_weights_flat` is used which normalizes the weights for each
+        class so that their overall weight matches the one set by
+        class_weights. Within each class, `evaluate_weights_flat` gives all
+        objects equal weights. Any weights function can be used here as long as
+        it has the same signature as `evaluate_weights_flat`.
     """
-    def __init__(self, name, featurizer, class_weights=None):
+    def __init__(self, name, featurizer, class_weights=None,
+                 weights_function=evaluate_weights_flat):
         super().__init__(name)
 
         self.featurizer = featurizer
         self.class_weights = class_weights
-
-    def evaluate_weights(self, dataset):
-        """Evaluate the weights to use for classification on a dataset.
-
-        The weights are set to normalize each class to have same weight. If
-        self.class_weights is set, those weights are applied after
-        normalization.
-
-        Parameters
-        ----------
-        dataset : :class:`Dataset`
-            The dataset to evaluate weights on.
-
-        Returns
-        -------
-        weights : `pandas.Series`
-            The weights that should be used for classification.
-        """
-        object_classes = dataset.metadata['class']
-        class_counts = object_classes.value_counts()
-
-        norm_class_weights = {}
-        for class_name, class_count in class_counts.items():
-            if self.class_weights is not None:
-                class_weight = self.class_weights[class_name]
-            else:
-                class_weight = 1
-
-            norm_class_weights[class_name] = (
-                class_weight * len(object_classes) / class_count
-            )
-
-        weights = object_classes.map(norm_class_weights)
-
-        return weights
+        self.weights_function = evaluate_weights_flat
 
     def train(self, dataset, num_folds=None, random_state=None, **kwargs):
         """Train the classifier on a dataset
@@ -195,7 +208,7 @@ class LightGBMClassifier(Classifier):
         folds = dataset.label_folds(num_folds, random_state)
         num_folds = np.max(folds) + 1
 
-        weights = self.evaluate_weights(dataset)
+        weights = self.weights_function(dataset)
 
         object_classes = dataset.metadata['class']
         classes = np.unique(object_classes)
