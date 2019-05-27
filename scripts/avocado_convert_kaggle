@@ -1,0 +1,40 @@
+#!/usr/bin/env python
+"""Convert predictions into the format required for the PLAsTiCC Kaggle
+competition.
+"""
+
+import argparse
+
+import avocado
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        'dataset',
+        help='Name of the dataset to use.'
+    )
+    parser.add_argument(
+        'classifier',
+        help='Name of the classifier to use.'
+    )
+
+    args = parser.parse_args()
+
+    print("Loading dataset %s..." % args.dataset)
+    dataset = avocado.load(args.dataset, metadata_only=True)
+
+    print("Loading predictions for classifier %s..." % args.classifier)
+    dataset.load_predictions(args.classifier)
+
+    print("Creating Kaggle predictions...")
+    kaggle_predictions = avocado.plasticc.create_kaggle_predictions(
+        dataset, dataset.predictions
+    )
+
+    print("Writing predictions...")
+    avocado.plasticc.write_kaggle_predictions(
+        dataset, kaggle_predictions, args.classifier
+    )
+
+    print("Done!")

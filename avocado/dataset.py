@@ -108,6 +108,33 @@ class Dataset():
 
         return features_path
 
+    def get_predictions_path(self, classifier=None):
+        """Return the path to where the predicitons for this dataset for a
+        given classifier should lie on disk.
+
+        Parameters
+        ----------
+        classifier : str or :class:`Classifier` (optional)
+            The classifier to load predictions from. This can be either an
+            instance of a :class:`Classifier`, or the name of a classifier. By
+            default, the stored classifier is used.
+        """
+        if classifier is None:
+            classifier = self.classifier
+
+        if isinstance(classifier, str):
+            classifier_name = classifier
+        else:
+            classifier_name = classifier.name
+
+        filename = "predictions_%s_%s.h5" % (
+            self.name, classifier_name
+        )
+        predictions_path = os.path.join(settings['predictions_directory'],
+                                        filename)
+
+        return predictions_path
+
     @classmethod
     def load(cls, name, metadata_only=False, chunk=None, num_chunks=None,
              **kwargs):
@@ -525,7 +552,7 @@ class Dataset():
 
         return self.predictions
 
-    def write_predictions(self, **kwargs):
+    def write_predictions(self, classifier=None, **kwargs):
         """Write predictions for this classifier to disk.
 
         The predictions will be stored in the predictions directory using both
@@ -533,14 +560,14 @@ class Dataset():
 
         Parameters
         ----------
+        classifier : str or :class:`Classifier` (optional)
+            The classifier to load predictions from. This can be either an
+            instance of a :class:`Classifier`, or the name of a classifier. By
+            default, the stored classifier is used.
         **kwargs
             Additional arguments to be passed to `utils.write_dataframe`
         """
-        filename = "predictions_%s_%s.h5" % (
-            self.name, self.classifier.name
-        )
-        predictions_path = os.path.join(settings['predictions_directory'],
-                                        filename)
+        predictions_path = self.get_predictions_path(classifier)
 
         write_dataframe(
             predictions_path,
@@ -550,3 +577,32 @@ class Dataset():
             num_chunks=self.num_chunks,
             **kwargs
         )
+
+    def load_predictions(self, classifier=None, **kwargs):
+        """Load the predictions for a classifier from disk.
+
+        Parameters
+        ----------
+        classifier : str or :class:`Classifier` (optional)
+            The classifier to load predictions from. This can be either an
+            instance of a :class:`Classifier`, or the name of a classifier. By
+            default, the stored classifier is used.
+
+        Returns
+        -------
+        predictions : :class:`pandas.DataFrame`
+            A pandas Series with the predictions for each class.
+        """
+        predictions_path = self.get_predictions_path(classifier)
+
+        self.predictions = read_dataframe(
+            predictions_path,
+            'predictions',
+            chunk=self.chunk,
+            num_chunks=self.num_chunks,
+            **kwargs
+        )
+
+        self.predictions.sort_index(inplace=True)
+
+        return self.predictions

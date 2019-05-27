@@ -232,12 +232,12 @@ class PlasticcAugmentor(Augmentor):
         samples.
 
         Parameters
-        ==========
+        ----------
         augmented_metadata : dict
             The augmented metadata
 
         Returns
-        =======
+        -------
         target_observation_count : int
             The target number of observations in the new light curve.
         """
@@ -272,7 +272,7 @@ class PlasticcAugmentor(Augmentor):
         observations.
 
         Parameters
-        ==========
+        ----------
         observations : pandas.DataFrame
             The augmented observations that have been sampled from a Gaussian
             Process. These observations have model flux uncertainties listed
@@ -281,7 +281,7 @@ class PlasticcAugmentor(Augmentor):
             The augmented metadata
 
         Returns
-        =======
+        -------
         observations : pandas.DataFrame
             The observations with uncertainties added.
         """
@@ -829,13 +829,30 @@ def find_time_to_fractions(fluxes, fractions, forward=True):
     return result
 
 
-def add_class_99_predictions(dataset, predictions):
-    """Add predictions for class 99 objects for the Kaggle PLAsTiCC challenge
+def create_kaggle_predictions(dataset, predictions=None):
+    """Add predictions for unknown objects for the Kaggle PLAsTiCC challenge
     using a predefined formula.
 
     This formula was tuned to the PLAsTiCC dataset, and is not a real method of
     identifying new objects in a dataset.
+
+    Parameters
+    ----------
+    dataset : :class:`Dataset`
+        The dataset to create predictions for.
+    predictions : :class:`pandas.DataFrame` (optional)
+        The original predictions for each class. If not specified, the
+        dataset's predictions will be used.
+
+    Returns
+    -------
+    kaggle_predictions : :class:`pandas.DataFrame`
+        A pandas DataFrame with the predictions for each class, with class 99
+        predictions added.
     """
+    if predictions is None:
+        predictions = dataset.predictions
+
     predictions = predictions.copy()
 
     if 99 in predictions:
@@ -843,6 +860,15 @@ def add_class_99_predictions(dataset, predictions):
         predictions[99] = 0.
         norm = np.sum(predictions, axis=1)
         predictions = predictions.div(norm, axis=0)
+
+    # Zero out galactic / extragalactic cross predictions.
+    galactic_classes = [6, 16, 53, 65, 92]
+    for class_name in predictions.columns:
+        if class_name in galactic_classes:
+            mask = ~dataset.metadata['galactic']
+        else:
+            mask = dataset.metadata['galactic']
+        predictions.loc[mask, class_name] = 0.
 
     # For extragalactic objects, use a fixed formula. Note: for simplicity we
     # do all objects here, including galactic, and then overwite the galactic
@@ -861,3 +887,36 @@ def add_class_99_predictions(dataset, predictions):
     predictions = predictions.div(norm, axis=0)
 
     return predictions
+
+def write_kaggle_predictions(dataset, predictions, classifier=None):
+    """Write predictions out to disk in the format required for kaggle.
+
+    The class 99 predictions should be added to standard predictions using
+    create_kaggle_predictions before calling this method.
+
+    Parameters
+    ----------
+    dataset : :class:`Dataset`
+        The dataset to write predictions for.
+    predictions : :class:`pandas.DataFrame`
+        A pandas DataFrame with the predictions for each class, with class 99
+        predictions added.
+    classifier : str or :class:`Classifier` (optional)
+        The classifier to load predictions from. This can be either an instance
+        of a :class:`Classifier`, or the name of a classifier. By default, the
+        stored classifier is used.
+    """
+    # Write a CSV instead of the hdf file that is originally saved. We simply
+    # change the extension and keep the same path that was originally used.
+    hdf_path = dataset.get_predictions_path(classifier)
+    csv_path = os.path.splitext(hdf_path)[0] + '.csv'
+
+    # In avocado, we add a prefix to the object IDs. Strip that back off.
+    predictions = predictions.copy()
+    predictions.index = [int(i.split('_')[1]) for i in predictions.index]
+    predictions.index.name = 'object_id'
+
+    # Rename the columns to match the Kaggle naming scheme
+    predictions.columns = ['class_%d' % i for i in predictions.columns]
+
+    predictions.to_csv(csv_path)
