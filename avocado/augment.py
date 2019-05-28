@@ -12,8 +12,10 @@ from .utils import settings, logger
 class Augmentor():
     """Class used to augment a dataset.
 
-    This class takes :class:`AstronomicalObject`s as input and generates new
-    :class:`AstronomicalObject`s with the following transformations applied:
+    This class takes :class:`AstronomicalObject` instances as input and
+    generates new :class:`AstronomicalObject` instances with the following
+    transformations applied:
+
     - Drop random observations.
     - Drop large blocks of observations.
     - For galactic observations, adjust the brightness (= distance).
@@ -31,10 +33,12 @@ class Augmentor():
 
     This class needs to be subclassed to implement survey specific methods.
     These methods are:
-    - `_augment_metadata`
-    - Either `_choose_sampling_times` or `_choose_target_observation_count`
-    - `_simulate_light_curve_uncertainties`
-    - `_simulate_detection`
+
+    - :func:`Augmentor._augment_metadata`
+    - Either :func:`Augmentor._choose_sampling_times` or
+      :func:`Augmentor._choose_target_observation_count`
+    - :func:`Augmentor._simulate_light_curve_uncertainties`
+    - :func:`Augmentor._simulate_detection`
 
     Parameters
     ----------
@@ -136,6 +140,7 @@ class Augmentor():
         =======
         sampling_times : pandas Dataframe
             A pandas Dataframe that has the following columns:
+
             - time : the times of the simulated observations.
             - band : the bands of the simulated observations.
             - reference_time : the times in the reference light curve that
