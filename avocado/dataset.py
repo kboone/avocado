@@ -11,7 +11,7 @@ from .utils import logger, AvocadoException, write_dataframe, \
 from .settings import settings
 
 class Dataset():
-    """Class representing a dataset of many astronomical objects.
+    """A dataset of many astronomical objects.
 
     Parameters
     ----------

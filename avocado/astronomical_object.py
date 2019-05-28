@@ -11,7 +11,7 @@ from .instruments import band_central_wavelengths, band_plot_colors
 from .utils import logger
 
 class AstronomicalObject():
-    """Class representing an astronomical object.
+    """An astronomical object, with metadata and a lightcurve.
 
     An astronomical object has both metadata describing its global properties,
     and observations of its light curve.

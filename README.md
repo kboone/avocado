@@ -1,9 +1,71 @@
+# Avocado
+
+Photometric Classification of Astronomical Transients and Variables With Biased
+Spectroscopic Samples
+
 [![Documentation Status](https://readthedocs.org/projects/avocado-classifier/badge/?version=latest)](https://avocado-classifier.readthedocs.io/en/latest/?badge=latest)
 
+## About
 
-WARNING: This code is going through a major restructuring right now to prepare
-for a proper release. Use an older version for now, or wait for the
-restructuring to be complete.
+Avocado is a general photometric classification code that is designed to
+produce classifications of arbitrary astronomical transients and variable
+objects. This code is designed from the ground up to address the problem of
+biased spectroscopic samples. It does so by generating many lightcurves from
+each object in the original spectroscopic sample at a variety of redshifts and
+with many different observing conditions. The "augmented" samples of
+lightcurves that are generated are much more representative of the full
+datasets than the original spectroscopic samples.
+
+The original codebase of avocado won the 2018 Kaggle PLAsTiCC challenge. The
+results of that analysis can be reproduced following the steps in TODO:
+DOCUMENTATION LINK.
+
+## Installation
+
+### Requirements
+
+Avocado has been tested on Python 3.7. It is not compatible with Python 2.
+Avocado depends on the following packages:
+- astropy
+- george
+- lightgbm
+- matplotlib
+- numpy
+- pandas
+- pytables (pytables on conda, tables on pip)
+- scikit-learn
+- scipy
+- tqdm
+
+We recommend using [anaconda](https://www.anaconda.com/distribution/) to
+set up a python environment with these packages and using the
+[conda-forge](https://conda-forge.org/) channel.
+
+### Installation
+
+Avocado can be downloaded from github using the following command:
+
+    git clone https://github.com/kboone/avocado.git
+
+It can then be installed as follows:
+
+    cd avocado
+    python setup.py install
+
+Along with installing the avocado module, this package also provides a set of
+scripts with names `avocado_...` that can be used to process datasets on the
+command line for a variety of common tasks.
+
+## Usage
+
+Avocado is designed to be a general purpose photometric classification code
+that can be used for different surveys with implementations of different
+classifiers. An example of how avocado can be applied to the PLAsTiCC dataset
+using a LightGBM classifier can be seen in TODO: DOCUMENTATION.
+
+
+
+
 
 # Kyle Boone's solution to the 2018 Kaggle PLAsTiCC challenge.
 
