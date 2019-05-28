@@ -41,7 +41,9 @@ def evaluate_weights_flat(dataset, class_weights=None):
     weights : `pandas.Series`
         The weights that should be used for classification.
     """
-    object_classes = dataset.metadata['class']
+    use_metadata = dataset.metadata
+
+    object_classes = use_metadata['class']
     class_counts = object_classes.value_counts()
 
     norm_class_weights = {}
@@ -61,9 +63,9 @@ def evaluate_weights_flat(dataset, class_weights=None):
 
 
 def evaluate_weights_redshift(
-        dataset, class_weights=None, group_key=None, min_redshift=None,
-        max_redshift=None, num_bins=None, min_count_fraction=None,
-        redshift_key=None):
+        dataset, class_weights=None, group_key=None,
+        min_redshift=None, max_redshift=None, num_bins=None,
+        min_bin_relative_fraction=None, min_bin_count=None, redshift_key=None):
     """Evaluate redshift-weighted weights to use to generate a
     rates-independent classifier.
 
@@ -100,11 +102,17 @@ def evaluate_weights_redshift(
     num_bins : int (optional)
         The number of redshift bins to use. By default,
         settings['redshift_weighting_num_bins'] will be used.
-    min_count_fraction : float (optional)
-        The minimum number of counts to use for weighting in a bin, as a
-        fraction of the total number of objects of all classes in the same
-        redshift bin and group. By default,
-        settings['redshift_weighting_min_count_fraction'] will be used.
+    min_bin_relative_fraction : float (optional)
+        The minimum relative fraction of objects in each redshift bin. The
+        relative fraction is defined as the fraction of objects of a given
+        class in a given redshift bin divided by the sum of fractions for all
+        object types. This is used to avoid having rare objects blow up the
+        metric. By default,
+        settings['redshift_weighting_min_bin_relative_fraction'] will be used.
+    min_bin_count : int (optional)
+        The minimum number of counts in each redshift bin. Tis is used to avoid
+        having poorly sampled objects in the training set blow up the metric.
+        By default, settings['redshift_weighting_min_bin_count'] will be used.
     redshift_key : str (optional)
         The key to use for determining the redshift. When training a
         classifier, this should typically be the spectroscopic redshift of the
@@ -127,10 +135,16 @@ def evaluate_weights_redshift(
         max_redshift = settings['redshift_weighting_max_redshift']
     if num_bins is None:
         num_bins = settings['redshift_weighting_num_bins']
-    if min_count_fraction is None:
-        min_count_fraction = settings['redshift_weighting_min_count_fraction']
+    if min_bin_relative_fraction is None:
+        min_bin_relative_fraction = \
+            settings['redshift_weighting_min_bin_relative_fraction']
+    if min_bin_count is None:
+        min_bin_count = \
+            settings['redshift_weighting_min_bin_count']
     if redshift_key is None:
         redshift_key = settings['redshift_weighting_redshift_key']
+
+    use_metadata = dataset.metadata
 
     # Create the initial bin range
     redshift_bins = np.logspace(np.log10(min_redshift), np.log10(max_redshift),
@@ -146,11 +160,11 @@ def evaluate_weights_redshift(
 
     # Figure out which redshift bin each object falls in.
     redshift_indices = np.searchsorted(
-        redshift_bins, dataset.metadata[redshift_key]) - 1
+        redshift_bins, use_metadata[redshift_key]) - 1
 
     # Figure out how many different classes there are, and create a mapping for
     # them.
-    object_classes = dataset.metadata['class']
+    object_classes = use_metadata['class']
     class_names = np.unique(object_classes)
     class_map = {class_name : i for i, class_name in enumerate(class_names)}
     class_indices = [class_map[i] for i in object_classes]
@@ -158,14 +172,14 @@ def evaluate_weights_redshift(
     # Figure out how many different groups there are, and create a mapping for
     # them.
     if group_key is not None:
-        groups = dataset.metadata[group_key]
+        groups = use_metadata[group_key]
         group_names = np.unique(groups)
         group_map = {group_name : i for i, group_name in
                      enumerate(group_names)}
         group_indices = [group_map[i] for i in groups]
     else:
         group_names = ['default']
-        group_indices = np.zeros(len(dataset.metadata), dtype=int)
+        group_indices = np.zeros(len(use_metadata), dtype=int)
 
     # Count how many objects are in each bin.
     counts = np.zeros((len(group_names), len(redshift_bins) - 1,
@@ -194,23 +208,22 @@ def evaluate_weights_redshift(
     num_extgal_classes = np.sum(extgal_mask)
     extgal_scale = num_extgal_bins / num_extgal_classes
 
-    # Figure out the weights for each bin.
-    weights = np.zeros(counts.shape)
+    # Add a floor to the counts in each redshift bin. First, we impose a floor
+    # on the normalized fraction of events in each redshift bin.
+    class_counts = np.sum(counts, axis=1)
+    class_counts = np.clip(class_counts, 1, None)
+    class_fractions = counts / class_counts[:, None, :]
+    norm_fractions = np.sum(class_fractions, axis=2)
+    floor_class_fractions = np.clip(
+        class_fractions,
+        min_bin_relative_fraction * norm_fractions[:, :, None],
+        None
+    )
+    floor_counts = floor_class_fractions * class_counts[:, None, :]
+    floor_counts = np.clip(floor_counts, min_bin_count, None)
 
-    for group_index in range(len(group_names)):
-        for redshift_index in range(len(redshift_bins) - 1):
-            # Calculate the weights for each redshift and group bin separately.
-            bin_counts = counts[group_index, redshift_index]
-
-            if np.sum(bin_counts) == 0:
-                weights[group_index, redshift_index] = 0.
-
-            # Add a floor to the counts in each bin to prevent absurdly
-            # high weights for poorly represented classes.
-            min_counts = min_count_fraction * np.sum(bin_counts)
-            bin_counts[bin_counts < min_counts] = min_counts
-
-            weights[group_index, redshift_index] = total_counts / bin_counts
+    # Calculate the weights for each bin using the floored counts.
+    weights = total_counts / floor_counts
 
     # Rescale the weights for extragalactic classes.
     weights[:, :, extgal_mask] /= extgal_scale
@@ -222,7 +235,7 @@ def evaluate_weights_redshift(
 
     # Calculate the weights for each object
     object_weights = weights[group_indices, redshift_indices, class_indices]
-    object_weights = pd.Series(object_weights, index=dataset.metadata.index)
+    object_weights = pd.Series(object_weights, index=use_metadata.index)
 
     return object_weights
 
@@ -377,7 +390,6 @@ class LightGBMClassifier(Classifier):
         num_folds = np.max(folds) + 1
 
         object_weights = self.weighting_function(dataset, self.class_weights)
-
         object_classes = dataset.metadata['class']
         classes = np.unique(object_classes)
 
