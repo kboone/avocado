@@ -23,7 +23,7 @@ description of the algorithms used for this challenge can be found on the
 analysis can be replicated using the latest version of avocado following the
 steps in the documentation.
 
-## Installation
+## Installation and Usage
 
 Instructions on how to install and use avocado can be found on the [avocado
 readthedocs page](https://avocado-classifier.readthedocs.io/en/latest/).
