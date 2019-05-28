@@ -13,6 +13,7 @@ logger = logging.getLogger('avocado')
 
 # Exceptions
 class AvocadoException(Exception):
+    """The base class for all exceptions raised in avocado.""" 
     pass
 
 
