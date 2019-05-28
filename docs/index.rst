@@ -69,15 +69,19 @@ Usage
 Avocado is designed to be a general purpose photometric classification code
 that can be used for different surveys with implementations of different
 classifiers. An example of how avocado can be applied to the PLAsTiCC dataset
-using a LightGBM classifier can be seen in TODO: DOCUMENTATION.
+using a LightGBM classifier can be seen :ref:`here <plasticc>`.
 
+
+.. toctree::
+   :maxdepth: 1
+   :caption: Contents:
+
+   plasticc
 
 
 .. toctree::
    :maxdepth: 2
-   :caption: Contents:
 
-   plasticc
    reference
 
 Indices and tables

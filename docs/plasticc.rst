@@ -1,3 +1,5 @@
+.. _plasticc:
+
 ********************************
 Classifying the PLAsTiCC dataset
 ********************************
