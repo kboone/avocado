@@ -5,6 +5,7 @@ For now, this only supports a LightGBM classifier with the PLAsTiCC featurizer.
 """
 
 import argparse
+import numpy as np
 
 import avocado
 
@@ -30,6 +31,12 @@ if __name__ == "__main__":
         help='Kind of per-object weighting to use. (default: %(default)s)',
         default='flat',
         choices=('flat', 'redshift'),
+    )
+    parser.add_argument(
+        '--simulate_plasticc_bias',
+        help='Simulate adding a bias for the PLAsTiCC dataset.',
+        default=None,
+        choices=(None, 'low_redshift', 'high_redshift'),
     )
 
     args = parser.parse_args()
@@ -59,6 +66,39 @@ if __name__ == "__main__":
     else:
         raise avocado.AvocadoException("Invalid object weighting '%s'!" %
                                        args.weighting)
+
+    # Simulation of bias for the PLAsTiCC dataset.
+    # TODO: generalize this to more than just PLAsTiCC
+    if args.simulate_plasticc_bias is not None:
+        print("!!!!!")
+        print("Simulating a bias in the redshift distribution of the "
+              "augmented set by dropping Type Ia supernova observations!")
+
+        # Modify the redshift distribution of the Type Ia supernovae.
+        redshifts = dataset.metadata['host_specz']
+        object_classes = dataset.metadata['class']
+
+        if args.simulate_plasticc_bias == 'low_redshift':
+            bias_thresholds = np.exp(-redshifts)
+        elif args.simulate_plasticc_bias == 'high_redshift':
+            bias_thresholds = np.exp(redshifts) - 1
+        else:
+            raise avocado.AvocadoException("Invalid bias type '%s'!" %
+                                           args.simulate_plasticc_bias)
+
+        bias_cut = np.random.rand(len(redshifts)) < bias_thresholds
+
+        keep_mask = (
+            (object_classes != 90)
+            | dataset.metadata['reference_object_id'].isnull()
+            | bias_cut
+        )
+
+        dataset.metadata = dataset.metadata[keep_mask]
+        dataset.raw_features = dataset.raw_features[keep_mask]
+
+        print("Dropped %d/%d objects!" % (np.sum(~keep_mask), len(keep_mask)))
+        print("!!!!!")
 
     # Train the classifier
     print("Training classifier '%s'..." % args.classifier)
