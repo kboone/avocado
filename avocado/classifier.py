@@ -65,7 +65,7 @@ def evaluate_weights_flat(dataset, class_weights=None):
 def evaluate_weights_redshift(
         dataset, class_weights=None, group_key=None,
         min_redshift=None, max_redshift=None, num_bins=None,
-        min_bin_relative_fraction=None, min_bin_count=None, redshift_key=None):
+        min_bin_count=None, redshift_key=None):
     """Evaluate redshift-weighted weights to use to generate a
     rates-independent classifier.
 
@@ -102,13 +102,6 @@ def evaluate_weights_redshift(
     num_bins : int (optional)
         The number of redshift bins to use. By default,
         settings['redshift_weighting_num_bins'] will be used.
-    min_bin_relative_fraction : float (optional)
-        The minimum relative fraction of objects in each redshift bin. The
-        relative fraction is defined as the fraction of objects of a given
-        class in a given redshift bin divided by the sum of fractions for all
-        object types. This is used to avoid having rare objects blow up the
-        metric. By default,
-        settings['redshift_weighting_min_bin_relative_fraction'] will be used.
     min_bin_count : int (optional)
         The minimum number of counts in each redshift bin. Tis is used to avoid
         having poorly sampled objects in the training set blow up the metric.
@@ -135,9 +128,6 @@ def evaluate_weights_redshift(
         max_redshift = settings['redshift_weighting_max_redshift']
     if num_bins is None:
         num_bins = settings['redshift_weighting_num_bins']
-    if min_bin_relative_fraction is None:
-        min_bin_relative_fraction = \
-            settings['redshift_weighting_min_bin_relative_fraction']
     if min_bin_count is None:
         min_bin_count = \
             settings['redshift_weighting_min_bin_count']
@@ -208,19 +198,9 @@ def evaluate_weights_redshift(
     num_extgal_classes = np.sum(extgal_mask)
     extgal_scale = num_extgal_bins / num_extgal_classes
 
-    # Add a floor to the counts in each redshift bin. First, we impose a floor
-    # on the normalized fraction of events in each redshift bin.
-    class_counts = np.sum(counts, axis=1)
-    class_counts = np.clip(class_counts, 1, None)
-    class_fractions = counts / class_counts[:, None, :]
-    norm_fractions = np.sum(class_fractions, axis=2)
-    floor_class_fractions = np.clip(
-        class_fractions,
-        min_bin_relative_fraction * norm_fractions[:, :, None],
-        None
-    )
-    floor_counts = floor_class_fractions * class_counts[:, None, :]
-    floor_counts = np.clip(floor_counts, min_bin_count, None)
+    # Add a floor to the counts in each redshift bin to avoid absurdly heigh
+    # weights.
+    floor_counts = np.clip(counts, min_bin_count, None)
 
     # Calculate the weights for each bin using the floored counts.
     weights = total_counts / floor_counts
