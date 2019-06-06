@@ -9,9 +9,9 @@ The Photometric LSST Astronomical Time-Series Classification Challenge
 classification methods for upcoming data from LSST. The authors of this
 challenge produced a realistic dataset for 3-years of LSST observations and
 simulated followup spectroscopic observations. The resulting dataset contains
-lightcurves for 3,492,888 astronomical objects, but only 7,846 of these objects
-have spectroscopic followup to confirm their types. The authors released this
-blinded dataset through the
+light curves for 3,492,888 astronomical objects, but only 7,846 of these
+objects have spectroscopic followup to confirm their types. The authors
+released this blinded dataset through the
 `Kaggle platform <https://www.kaggle.com/c/PLAsTiCC-2018>`_
 and challenged the community to develop new methods for photometric
 classification.
@@ -132,7 +132,7 @@ These can be converted to a CSV file used by kaggle with the following command:
 (optional) Training a redshift-weighted classifier
 ==================================================
 
-As shown in Boone et al. 2019, a redshift-weighted classifier can be used to
+As shown in Boone (2019), a redshift-weighted classifier can be used to
 generate predictions that are independent of the redshift distribution and
 rates in the training sample. This is especially important for augmented
 datasets where the exact form of augmentation will otherwise leak into the
@@ -146,7 +146,7 @@ classifier, run the following commands: ::
 (optional) Training classifiers on biased samples
 =================================================
 
-In Boone et al. 2019, we illustrate the bias of a classically trained
+In Boone (2019), we illustrate the bias of a classically trained
 classifier when the redshift distributions of the training samples are
 modified. To reproduce these results, run the following commands: ::
 
@@ -159,3 +159,16 @@ modified. To reproduce these results, run the following commands: ::
    avocado_predict plasticc_test flat_weight_bias_low
    avocado_predict plasticc_test redshift_weight_bias_high
    avocado_predict plasticc_test redshift_weight_bias_low
+
+
+(optional) Reproducing the figures in Boone 2019
+================================================
+
+A Jupyter notebook that was used to produce all of the figures in Boone (2019)
+is included with avocado. It can be found on
+`github <https://github.com/kboone/avocado/blob/master/notebooks/avocado_paper_figures.ipynb>`_.
+To run this notebook, copy it to the working directory after running all of the
+previous steps in this document, and open it using Jupyter. Note that the
+augmentation procedure is not deterministic, so the results will vary slightly
+between runs. The plots of augmented light curves will need to be adjusted to
+select objects in the new augmented sample.
