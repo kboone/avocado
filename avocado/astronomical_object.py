@@ -315,7 +315,8 @@ class AstronomicalObject():
         else:
             return predictions
 
-    def plot_light_curve(self, show_gp=True, verbose=False, **kwargs):
+    def plot_light_curve(self, show_gp=True, verbose=False, axis=None,
+                         **kwargs):
         """Plot the object's light curve
 
         Parameters
@@ -326,6 +327,9 @@ class AstronomicalObject():
         verbose : bool (optional)
             If True, print detailed information about the light curve and GP
             fit.
+        axis : `matplotlib.axes.Axes` (optional)
+            The matplotlib axis to plot to. If None, a new figure will be
+            created.
         kwargs : kwargs (optional)
             Additional arguments. If show_gp is True, these are passed to
             `fit_gaussian_process`. Otherwise, these are passed to
@@ -355,36 +359,38 @@ class AstronomicalObject():
                 self.predict_gaussian_process(self.bands, pred_times,
                                               fitted_gp=gp)
 
-        plt.figure()
+        if axis is None:
+            figure, axis = plt.subplots()
 
         for band_idx, band in enumerate(self.bands):
             mask = observations['band'] == band
             band_data = observations[mask]
             color = band_plot_colors[band]
 
-            plt.errorbar(band_data['time'], band_data['flux'],
-                         band_data['flux_error'], fmt='o', c=color,
-                         markersize=5, label=band)
+            axis.errorbar(band_data['time'], band_data['flux'],
+                          band_data['flux_error'], fmt='o', c=color,
+                          markersize=5, label=band)
 
             if not show_gp:
                 continue
 
             pred = predictions[band_idx]
-            plt.plot(pred_times, pred, c=color)
+            axis.plot(pred_times, pred, c=color)
             err = prediction_uncertainties[band_idx]
 
             if kwargs.get('uncertainties', True):
                 # If they were calculated, show uncertainties with a shaded
                 # band.
-                plt.fill_between(pred_times, pred-err, pred+err, alpha=0.2,
-                                 color=color)
+                axis.fill_between(pred_times, pred-err, pred+err, alpha=0.2,
+                                  color=color)
 
-        plt.legend()
+        axis.legend()
 
-        plt.xlabel('Time (days)')
-        plt.ylabel('Flux')
-        plt.tight_layout()
-        plt.xlim(min_time, max_time)
+        axis.set_xlabel('Time (days)')
+        axis.set_ylabel('Flux')
+        axis.set_xlim(min_time, max_time)
+
+        axis.figure.tight_layout()
 
     def print_metadata(self):
         """Print out the object's metadata in a nice format."""
