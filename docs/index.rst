@@ -33,12 +33,13 @@ Avocado has been tested on Python 3.7. It is not compatible with Python 2.
 Avocado depends on the following packages:
 
 - astropy
-- george
+- george (available through the conda-forge channel on conda)
 - lightgbm
 - matplotlib
 - numpy
 - pandas
 - pytables (pytables on conda, tables on pip)
+- requests
 - scikit-learn
 - scipy
 - tqdm
