@@ -33,6 +33,25 @@ avocado_featurize \\
     --tag {tag}
 """
 
+slurm_template = """#!/bin/bash
+#SBATCH --export=ALL
+#SBATCH -J {job_name}
+#SBATCH -o {jobs_directory}/{job_name}.out
+#SBATCH -e {jobs_directory}/{job_name}.err
+
+# Use a single core for each job. This parallelizes better than trying to use
+# multiple cores per job.
+export MKL_NUM_THREADS=1
+export NUMEXPR_NUM_THREADS=1
+export OMP_NUM_THREADS=1
+
+cd {working_directory}
+avocado_featurize \\
+    {dataset} \\
+    --chunk {job} \\
+    --num_chunks {num_jobs} \\
+    --tag {tag}
+"""
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -56,6 +75,11 @@ if __name__ == "__main__":
         '--working_directory',
         default=None,
         help='Working directory. Default is the current directory.'
+    )
+    parser.add_argument(
+        '--schedular',
+        default=None,
+        help='Schedular system. sge or slurm'
     )
     parser.add_argument(
         '--jobs_directory',
@@ -98,11 +122,21 @@ if __name__ == "__main__":
 
         job_path = '{jobs_directory}/{job_name}.sh'.format(**job_args)
 
-        job_template = sge_template.format(**job_args)
+        if args['schedular'] is None:
+            job_template = sge_template.format(**job_args)
 
-        # Write the jobs file
-        with open(job_path, 'w') as job_file:
-            job_file.write(job_template)
+            # Write the jobs file
+            with open(job_path, 'w') as job_file:
+                job_file.write(job_template)
 
-        # Submit the job
-        subprocess.call(["qsub"] + args['qsub_arguments'].split() + [job_path])
+            # Submit the job
+            subprocess.call(["qsub"] + args['qsub_arguments'].split() + [job_path])
+        else:
+            job_template = slurm_template.format(**job_args)
+
+            # Write the jobs file
+            with open(job_path, 'w') as job_file:
+                job_file.write(job_template)
+
+            # Submit the job
+            subprocess.call(["sbatch"] + args['qsub_arguments'].split() + [job_path])
