@@ -213,7 +213,10 @@ class AstronomicalObject():
 
         bounds = [(0, np.log(1000**2))]
         if not fix_scale:
-            bounds = [(-30, 30)] + bounds
+            bounds = (
+                [(guess_parameters[0] - 10, guess_parameters[0] + 10)]
+                + bounds
+            )
 
         fit_result = minimize(
             neg_ln_like,
