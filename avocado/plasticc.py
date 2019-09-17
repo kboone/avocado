@@ -315,8 +315,18 @@ class PlasticcAugmentor(Augmentor):
 
         # Calculate the new noise levels using a lognormal distribution for
         # each band.
-        lognormal_parameters = np.array([band_noises[i] for i in
-                                         observations['band']])
+        lognormal_parameters = []
+        for band in observations['band']:
+            try:
+                lognormal_parameters.append(band_noises[band])
+            except KeyError:
+                raise AvocadoException(
+                    "Noise properties of band %s not known, add them in "
+                    "PlasticcAugmentor._simulate_light_curve_uncertainties."
+                    % band
+                )
+        lognormal_parameters = np.array(lognormal_parameters)
+
         add_stds = np.random.lognormal(lognormal_parameters[:, 0],
                                        lognormal_parameters[:, 1])
 
