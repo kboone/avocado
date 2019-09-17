@@ -22,3 +22,31 @@ band_plot_colors = {
     'lsstz': 'C3',
     'lssty': 'goldenrod',
 }
+
+def get_band_plot_color(band):
+    """Return the plot color for a given band.
+
+    If the band does not yet have a color assigned to it, then a random color
+    will be assigned (in a systematic way).
+
+    Parameters
+    ----------
+    band : str
+        The name of the band to use.
+    """
+    if band in band_plot_colors:
+        return band_plot_colors[band]
+
+    print("No plot color assigned for band %s, assigning a random one." % band)
+
+    # Systematic random colors. We use the hash of the band name.
+    # Note: hash() uses a random offset in python 3 so it isn't consistent
+    # between runs!
+    import hashlib
+    hasher = hashlib.md5()
+    hasher.update(band.encode('utf8'))
+    hex_color = '#%s' % hasher.hexdigest()[-6:]
+
+    band_plot_colors[band] = hex_color
+
+    return hex_color

@@ -7,7 +7,7 @@ import numpy as np
 import pandas as pd
 from scipy.optimize import minimize
 
-from .instruments import band_central_wavelengths, band_plot_colors
+from .instruments import band_central_wavelengths, get_band_plot_color
 from .utils import logger
 
 class AstronomicalObject():
@@ -368,7 +368,7 @@ class AstronomicalObject():
         for band_idx, band in enumerate(self.bands):
             mask = observations['band'] == band
             band_data = observations[mask]
-            color = band_plot_colors[band]
+            color = get_band_plot_color(band)
 
             axis.errorbar(band_data['time'], band_data['flux'],
                           band_data['flux_error'], fmt='o', c=color,
