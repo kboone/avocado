@@ -7,7 +7,7 @@ import numpy as np
 import pandas as pd
 from scipy.optimize import minimize
 
-from .instruments import band_central_wavelengths, get_band_plot_color
+from .instruments import get_band_central_wavelength, get_band_plot_color
 from .utils import logger
 
 class AstronomicalObject():
@@ -68,7 +68,7 @@ class AstronomicalObject():
         """
         unsorted_bands = np.unique(self.observations['band'])
         sorted_bands = np.array(sorted(unsorted_bands,
-                                       key=band_central_wavelengths.get))
+                                       key=get_band_central_wavelength))
         return sorted_bands
 
     def subtract_background(self):
@@ -171,7 +171,7 @@ class AstronomicalObject():
         fluxes = gp_observations['flux']
         flux_errors = gp_observations['flux_error']
 
-        wavelengths = gp_observations['band'].map(band_central_wavelengths)
+        wavelengths = gp_observations['band'].map(get_band_central_wavelength)
         times = gp_observations['time']
 
         # Use the highest signal-to-noise observation to estimate the scale. We
@@ -301,7 +301,7 @@ class AstronomicalObject():
 
         for band in bands:
             wavelengths = (
-                np.ones(len(times)) * band_central_wavelengths[band]
+                np.ones(len(times)) * get_band_central_wavelength(band)
             )
             pred_x_data = np.vstack([times, wavelengths]).T
             if uncertainties:

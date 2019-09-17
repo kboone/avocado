@@ -3,7 +3,9 @@
 This module is used to define properties of various instruments. This should
 eventually be split out into some kind of configuration file setup.
 """
+from .utils import AvocadoException
 
+# Central wavelengths for each band.
 band_central_wavelengths = {
     'lsstu': 3671.,
     'lsstg': 4827.,
@@ -22,6 +24,25 @@ band_plot_colors = {
     'lsstz': 'C3',
     'lssty': 'goldenrod',
 }
+
+def get_band_central_wavelength(band):
+    """Return the central wavelength for a given band.
+
+    If the band does not yet have a color assigned to it, an AvocadoException
+    is raised.
+
+    Parameters
+    ----------
+    band : str
+        The name of the band to use.
+    """
+    if band in band_central_wavelengths:
+        return band_central_wavelengths[band]
+    else:
+        raise AvocadoException(
+            "Central wavelength unknown for band %s. Add it to "
+            "avocado.instruments.band_central_wavelengths." % band
+        )
 
 def get_band_plot_color(band):
     """Return the plot color for a given band.

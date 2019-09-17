@@ -6,7 +6,7 @@ from tqdm import tqdm
 
 from .astronomical_object import AstronomicalObject
 from .dataset import Dataset
-from .instruments import band_central_wavelengths
+from .instruments import get_band_central_wavelength
 from .utils import settings, logger
 
 class Augmentor():
@@ -330,7 +330,7 @@ class Augmentor():
             reference_redshift = reference_object.metadata['host_specz']
             redshift_scale = (1 + new_redshift) / (1 + reference_redshift)
 
-            new_wavelengths = np.array([band_central_wavelengths[i] for i in
+            new_wavelengths = np.array([get_band_central_wavelength(i) for i in
                                         observations['band']])
             eval_wavelengths = new_wavelengths / redshift_scale
             pred_x_data = np.vstack([observations['reference_time'],
