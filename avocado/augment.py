@@ -198,6 +198,11 @@ class Augmentor():
             (sampling_times['time'] < end_time + window_padding).values
         ].copy()
 
+        # Make sure that we have some observations left at this point. If not,
+        # return an empty observations list.
+        if len(sampling_times) == 0:
+            return sampling_times
+
         # At high redshifts, we need to fill in the light curve to account for
         # the fact that there is a lower observation density compared to lower
         # redshifts.
