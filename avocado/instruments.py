@@ -25,6 +25,16 @@ band_plot_colors = {
     'lssty': 'goldenrod',
 }
 
+# Markers for plotting
+band_plot_markers = {
+    'lsstu': 'o',
+    'lsstg': 'v',
+    'lsstr': '^',
+    'lssti': '<',
+    'lsstz': '>',
+    'lssty': 's',
+}
+
 def get_band_central_wavelength(band):
     """Return the central wavelength for a given band.
 
@@ -71,3 +81,19 @@ def get_band_plot_color(band):
     band_plot_colors[band] = hex_color
 
     return hex_color
+
+def get_band_plot_marker(band):
+    """Return the plot marker for a given band.
+
+    If the band does not yet have a marker assigned to it, then we use the
+    default circle.
+
+    Parameters
+    ----------
+    band : str
+        The name of the band to use.
+    """
+    if band in band_plot_markers:
+        return band_plot_markers[band]
+    else:
+        return 'o'
