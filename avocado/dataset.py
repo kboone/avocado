@@ -79,6 +79,7 @@ class Dataset():
         # Other variables that will be populated by various methods.
         self.raw_features = None
         self.features = None
+        self.models = None
 
     @property
     def path(self):
@@ -107,6 +108,26 @@ class Dataset():
         features_path = os.path.join(features_directory, features_filename)
 
         return features_path
+
+    def get_models_path(self, tag=None):
+        """Return the path to where the models for this dataset should lie on
+        disk
+
+        Parameters
+        ----------
+        tag : str (optional)
+            The version of the features/model to use. By default, this will use
+            settings['features_tag'].
+        """
+        if tag is None:
+            tag = settings['features_tag']
+
+        features_directory = settings['features_directory']
+
+        models_filename = 'models_%s_%s.h5' % (tag, self.name)
+        models_path = os.path.join(features_directory, models_filename)
+
+        return models_path
 
     def get_predictions_path(self, classifier=None):
         """Return the path to where the predicitons for this dataset for a
@@ -417,7 +438,7 @@ class Dataset():
             chunk=self.chunk, num_chunks=self.num_chunks, **kwargs
         )
 
-    def extract_raw_features(self, featurizer):
+    def extract_raw_features(self, featurizer, keep_models=False):
         """Extract raw features from the dataset.
 
         The raw features are saved as `self.raw_features`.
@@ -426,6 +447,9 @@ class Dataset():
         ----------
         featurizer : :class:`Featurizer`
             The featurizer that will be used to calculate the features.
+        keep_models : bool
+            If true, the models used for the features are kept and stored as
+            Dataset.models. Note that not all featurizers support this.
 
         Returns
         -------
@@ -434,8 +458,15 @@ class Dataset():
         """
         list_raw_features = []
         object_ids = []
+        models = {}
         for obj in tqdm(self.objects, desc='Object', dynamic_ncols=True):
-            obj_features = featurizer.extract_raw_features(obj)
+            obj_features = featurizer.extract_raw_features(
+                obj, return_model=keep_models)
+
+            if keep_models:
+                obj_features, model = obj_features
+                models[obj.metadata['object_id']] = model
+
             list_raw_features.append(obj_features.values())
             object_ids.append(obj.metadata['object_id'])
 
@@ -448,6 +479,9 @@ class Dataset():
         raw_features.index.name = 'object_id'
 
         self.raw_features = raw_features
+
+        if keep_models:
+            self.models = models
 
         return raw_features
 
@@ -606,3 +640,26 @@ class Dataset():
         self.predictions.sort_index(inplace=True)
 
         return self.predictions
+
+    def write_models(self, tag=None):
+        """Write the models of the light curves to disk.
+
+        The models will be stored in the features directory using the dataset's
+        name and the given features tag. Note that for now the models are
+        stored as individual tables in the HDF5 file because there doesn't
+        appear to be a good way to store fixed length arrays in pandas.
+
+        WARNING: This is not the best way to implement this, and there are
+        definitely much better ways. This also isn't thread-safe at all.
+
+        Parameters
+        ----------
+        tag : str (optional)
+            The tag for this version of the features. By default, this will use
+            settings['features_tag'].
+        """
+        models_path = self.get_models_path(tag=tag)
+
+        store = pd.HDFStore(models_path, 'a')
+        for model_name, model in self.models.items():
+            model.to_hdf(store, model_name, mode='a')

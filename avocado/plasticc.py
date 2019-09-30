@@ -373,7 +373,7 @@ class PlasticcAugmentor(Augmentor):
 
 class PlasticcFeaturizer(Featurizer):
     """Class used to extract features for the PLAsTiCC dataset."""
-    def extract_raw_features(self, astronomical_object):
+    def extract_raw_features(self, astronomical_object, return_model=False):
         """Extract raw features from an object
 
         Featurizing is slow, so the idea here is to extract a lot of different
@@ -392,11 +392,16 @@ class PlasticcFeaturizer(Featurizer):
         ----------
         astronomical_object : :class:`AstronomicalObject`
             The astronomical object to featurize.
+        return_model : bool
+            If true, the light curve model is also returned. Defaults to False.
 
         Returns
         -------
         raw_features : dict
             The raw extracted features for this object.
+        model : dict (optional)
+            A dictionary with the light curve model in each band. This is only
+            returned if return_model is set to True.
         """
         from scipy.signal import find_peaks
 
@@ -616,7 +621,18 @@ class PlasticcFeaturizer(Featurizer):
                         rel_height = np.nan
                     features['%s_frac_%d' % (base_name, (i+1))] = rel_height
 
-        return features
+        if return_model:
+            # Return the GP predictions along with the features.
+            model = {}
+            for idx, band in enumerate(plasticc_bands):
+                model['%s' % band] = gp_fluxes[idx]
+            model['time'] = gp_times
+            model = pd.DataFrame(model).set_index('time')
+
+            return features, model
+        else:
+            # Only return the features.
+            return features
 
     def select_features(self, raw_features):
         """Select features to use for classification

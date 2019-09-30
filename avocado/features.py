@@ -1,6 +1,6 @@
 class Featurizer():
     """Class used to extract features from objects."""
-    def extract_raw_features(self, astronomical_object):
+    def extract_raw_features(self, astronomical_object, return_model=False):
         """Extract raw features from an object
 
         Featurizing is slow, so the idea here is to extract a lot of different
@@ -19,11 +19,16 @@ class Featurizer():
         ----------
         astronomical_object : :class:`AstronomicalObject`
             The astronomical object to featurize.
+        return_model : bool
+            If true, the light curve model is also returned. Defaults to False.
 
         Returns
         -------
         raw_features : dict
             The raw extracted features for this object.
+        model : dict (optional)
+            A dictionary with the light curve model in each band. This is only
+            returned if return_model is set to True.
         """
         return NotImplementedError
 
