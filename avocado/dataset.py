@@ -663,3 +663,4 @@ class Dataset():
         store = pd.HDFStore(models_path, 'a')
         for model_name, model in self.models.items():
             model.to_hdf(store, model_name, mode='a')
+        store.close()

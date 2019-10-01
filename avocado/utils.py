@@ -31,12 +31,12 @@ def _verify_hdf_chunks(store, keys):
     keys : list
         A list of keys to verify in the HDF5 file.
     """
-    try:
-        chunk_info = pd.read_hdf(store, 'chunk_info')
-    except KeyError:
+    if 'chunk_info' not in store:
         # No chunk_info. The file wasn't written by chunks so there is nothing
         # to do.
         return
+
+    chunk_info = pd.read_hdf(store, 'chunk_info')
 
     missing_chunks = {key: list() for key in keys}
 
@@ -313,9 +313,9 @@ def write_dataframe(path, dataframe, key, overwrite=False, append=None,
     # If we are writing out chunks, make sure that this chunk hasn't already
     # been written to this file.
     if chunk is not None:
-        try:
+        if 'chunk_info' in store:
             chunk_info = pd.read_hdf(store, 'chunk_info')
-        except KeyError:
+        else:
             # No chunk_info yet, create it.
             chunk_index = [i for i in range(num_chunks)]
             chunk_values = ['' for i in range(num_chunks)]
