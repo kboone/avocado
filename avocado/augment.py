@@ -9,7 +9,8 @@ from .dataset import Dataset
 from .instruments import get_band_central_wavelength
 from .utils import settings, logger
 
-class Augmentor():
+
+class Augmentor:
     """Class used to augment a dataset.
 
     This class takes :class:`AstronomicalObject` instances as input and
@@ -47,14 +48,11 @@ class Augmentor():
         procedure. These kwargs will be passed to
         astropy.cosmology.FlatLambdaCDM.
     """
+
     def __init__(self, **cosmology_kwargs):
         # Default cosmology to use. This is the one assumed for the PLAsTiCC
         # dataset.
-        cosmology_parameters = {
-            'H0': 70,
-            'Om0': 0.3,
-            'Tcmb0': 2.725,
-        }
+        cosmology_parameters = {"H0": 70, "Om0": 0.3, "Tcmb0": 2.725}
 
         cosmology_parameters.update(cosmology_kwargs)
 
@@ -98,9 +96,15 @@ class Augmentor():
         """
         return NotImplementedError
 
-    def _choose_sampling_times(self, reference_object, augmented_metadata,
-                              max_time_shift=50, block_width=250,
-                              window_padding=100, drop_fraction=0.1):
+    def _choose_sampling_times(
+        self,
+        reference_object,
+        augmented_metadata,
+        max_time_shift=50,
+        block_width=250,
+        window_padding=100,
+        drop_fraction=0.1,
+    ):
         """Choose the times at which to sample for a new augmented object.
 
         This method should really be survey specific, but a default
@@ -154,48 +158,48 @@ class Augmentor():
 
         # Start with a copy of the original times and bands.
         reference_observations = reference_object.observations
-        sampling_times = reference_observations[['time', 'band']].copy()
-        sampling_times['reference_time'] = sampling_times['time'].copy()
+        sampling_times = reference_observations[["time", "band"]].copy()
+        sampling_times["reference_time"] = sampling_times["time"].copy()
 
-        start_time = np.min(sampling_times['time'])
-        end_time = np.max(sampling_times['time'])
+        start_time = np.min(sampling_times["time"])
+        end_time = np.max(sampling_times["time"])
 
         # If the redshift changed, shift the time of the observations.
-        augmented_redshift = augmented_metadata['redshift']
-        reference_redshift = reference_object.metadata['host_specz']
+        augmented_redshift = augmented_metadata["redshift"]
+        reference_redshift = reference_object.metadata["host_specz"]
         redshift_scale = (1 + augmented_redshift) / (1 + reference_redshift)
 
         if augmented_redshift != reference_redshift:
             # Shift relative to an approximation of the peak flux time so that
             # we generally keep the interesting part of the light curve in the
             # frame.
-            ref_peak_time = (reference_observations['time'].iloc[
-                np.argmax(reference_observations['flux'].values)])
+            ref_peak_time = reference_observations["time"].iloc[
+                np.argmax(reference_observations["flux"].values)
+            ]
 
-            sampling_times['time'] = (
-                ref_peak_time +
-                redshift_scale * (sampling_times['time'] - ref_peak_time)
+            sampling_times["time"] = ref_peak_time + redshift_scale * (
+                sampling_times["time"] - ref_peak_time
             )
 
         # Shift the observations forward or backward in time by a small
         # amount.
-        sampling_times['time'] += np.random.uniform(-max_time_shift,
-                                                    max_time_shift)
+        sampling_times["time"] += np.random.uniform(-max_time_shift, max_time_shift)
 
         # Drop a block of observations corresponding to the typical width of a
         # season to create light curves with large missing chunks.
-        block_start = np.random.uniform(start_time-block_width, end_time)
+        block_start = np.random.uniform(start_time - block_width, end_time)
         block_end = block_start + block_width
-        block_mask = ((sampling_times['time'] < block_start) |
-                      (sampling_times['time'] > block_end))
+        block_mask = (sampling_times["time"] < block_start) | (
+            sampling_times["time"] > block_end
+        )
         sampling_times = sampling_times[block_mask].copy()
 
         # Drop observations that are outside of the observing window after all
         # of these procedures. We leave a bit of a buffer to get better
         # baselines for background estimation.
         sampling_times = sampling_times[
-            (sampling_times['time'] > start_time - window_padding).values &
-            (sampling_times['time'] < end_time + window_padding).values
+            (sampling_times["time"] > start_time - window_padding).values
+            & (sampling_times["time"] < end_time + window_padding).values
         ].copy()
 
         # Make sure that we have some observations left at this point. If not,
@@ -208,8 +212,7 @@ class Augmentor():
         # redshifts.
         num_fill = int(target_observation_count * (redshift_scale - 1))
         if num_fill > 0:
-            new_indices = np.random.choice(sampling_times.index, num_fill,
-                                           replace=True)
+            new_indices = np.random.choice(sampling_times.index, num_fill, replace=True)
             new_rows = sampling_times.loc[new_indices]
 
             # Tweak the times of the new rows slightly.
@@ -224,27 +227,29 @@ class Augmentor():
             # new_rows['ref_time'] += time_tweaks
 
             # Choose new bands randomly.
-            new_rows['band'] = np.random.choice(reference_object.bands,
-                                                num_fill, replace=True)
+            new_rows["band"] = np.random.choice(
+                reference_object.bands, num_fill, replace=True
+            )
 
             sampling_times = pd.concat([sampling_times, new_rows])
 
         # Drop back down to the target number of observations. Having too few
         # observations is fine, but having too many is not. We always drop at
         # least 10% of observations to get some shakeup of the light curve.
-        num_drop = int(max(len(sampling_times) - target_observation_count,
-                           drop_fraction * target_observation_count))
-        drop_indices = np.random.choice(
-            sampling_times.index, num_drop, replace=False
+        num_drop = int(
+            max(
+                len(sampling_times) - target_observation_count,
+                drop_fraction * target_observation_count,
+            )
         )
+        drop_indices = np.random.choice(sampling_times.index, num_drop, replace=False)
         sampling_times = sampling_times.drop(drop_indices).copy()
 
         sampling_times.reset_index(inplace=True, drop=True)
 
         return sampling_times
 
-    def _simulate_light_curve_uncertainties(self, observations,
-                                            augmented_metadata):
+    def _simulate_light_curve_uncertainties(self, observations, augmented_metadata):
         """Simulate the observation-related noise for a light curve.
 
         This method needs to be implemented in survey-specific subclasses of
@@ -324,56 +329,62 @@ class Augmentor():
         # Get the GP. This uses a cache if possible.
         gp = reference_object.get_default_gaussian_process()
 
-        for attempt in range(settings['augment_retries']):
+        for attempt in range(settings["augment_retries"]):
             # Figure out where to sample the augmented light curve at.
-            observations = self._choose_sampling_times(reference_object,
-                                                      augmented_metadata)
+            observations = self._choose_sampling_times(
+                reference_object, augmented_metadata
+            )
 
             # Compute the fluxes from the GP at the augmented observation
             # times.
-            new_redshift = augmented_metadata['redshift']
-            reference_redshift = reference_object.metadata['host_specz']
+            new_redshift = augmented_metadata["redshift"]
+            reference_redshift = reference_object.metadata["host_specz"]
             redshift_scale = (1 + new_redshift) / (1 + reference_redshift)
 
-            new_wavelengths = np.array([get_band_central_wavelength(i) for i in
-                                        observations['band']])
+            new_wavelengths = np.array(
+                [get_band_central_wavelength(i) for i in observations["band"]]
+            )
             eval_wavelengths = new_wavelengths / redshift_scale
-            pred_x_data = np.vstack([observations['reference_time'],
-                                     eval_wavelengths]).T
+            pred_x_data = np.vstack(
+                [observations["reference_time"], eval_wavelengths]
+            ).T
             new_fluxes, new_fluxvars = gp(pred_x_data, return_var=True)
 
-            observations['flux'] = new_fluxes
-            observations['flux_error'] = np.sqrt(new_fluxvars)
+            observations["flux"] = new_fluxes
+            observations["flux_error"] = np.sqrt(new_fluxvars)
 
             # Update the brightness of the new observations. If the
             # 'augment_brightness' key is in the metadata, we add that in
             # magnitudes to the augmented object.
-            augment_brightness = augmented_metadata.get(
-                'augment_brightness', 0)
-            adjust_scale = 10**(-0.4*augment_brightness)
+            augment_brightness = augmented_metadata.get("augment_brightness", 0)
+            adjust_scale = 10 ** (-0.4 * augment_brightness)
 
             if reference_redshift != 0:
                 # Adjust brightness for extragalactic objects. We simply follow
                 # the Hubble diagram.
-                delta_distmod = (self.cosmology.distmod(reference_redshift) -
-                                 self.cosmology.distmod(new_redshift)).value
-                adjust_scale *= 10**(0.4*delta_distmod)
+                delta_distmod = (
+                    self.cosmology.distmod(reference_redshift)
+                    - self.cosmology.distmod(new_redshift)
+                ).value
+                adjust_scale *= 10 ** (0.4 * delta_distmod)
 
-            observations['flux'] *= adjust_scale
-            observations['flux_error'] *= adjust_scale
+            observations["flux"] *= adjust_scale
+            observations["flux_error"] *= adjust_scale
 
             # Save the model flux and flux error
-            observations['model_flux'] = observations['flux']
-            observations['model_flux_error'] = observations['flux_error']
+            observations["model_flux"] = observations["flux"]
+            observations["model_flux_error"] = observations["flux_error"]
 
             # Add in light curve noise. This is survey specific and must be
             # implemented in subclasses.
             observations = self._simulate_light_curve_uncertainties(
-                observations, augmented_metadata)
+                observations, augmented_metadata
+            )
 
             # Simulate detection
             observations, pass_detection = self._simulate_detection(
-                observations, augmented_metadata)
+                observations, augmented_metadata
+            )
 
             # If our light curve passes detection thresholds, we're done!
             if pass_detection:
@@ -406,36 +417,39 @@ class Augmentor():
         # Create a new object id for the augmented object. We choose a random
         # string to add on to the end of the original object id that is very
         # unlikely to have collisions.
-        ref_object_id = reference_object.metadata['object_id']
-        random_str = ''.join(np.random.choice(list(string.ascii_letters), 10))
-        new_object_id = '%s_aug_%s' % (ref_object_id, random_str)
+        ref_object_id = reference_object.metadata["object_id"]
+        random_str = "".join(np.random.choice(list(string.ascii_letters), 10))
+        new_object_id = "%s_aug_%s" % (ref_object_id, random_str)
 
         while True:
             # Augment the metadata. The details of how this should work is
             # survey specific, so this must be implemented in subclasses.
             augmented_metadata = self._augment_metadata(reference_object)
-            augmented_metadata['object_id'] = new_object_id
-            augmented_metadata['reference_object_id'] = ref_object_id
+            augmented_metadata["object_id"] = new_object_id
+            augmented_metadata["reference_object_id"] = ref_object_id
 
             # Generate an augmented light curve for this augmented metadata.
-            observations = self._resample_light_curve(reference_object,
-                                                      augmented_metadata)
+            observations = self._resample_light_curve(
+                reference_object, augmented_metadata
+            )
 
             if observations is not None:
                 # Successfully generated a light curve.
-                augmented_object = AstronomicalObject(augmented_metadata,
-                                                      observations)
+                augmented_object = AstronomicalObject(augmented_metadata, observations)
                 return augmented_object
             elif not force_success:
                 # Failed to generate a light curve, and we aren't retrying
                 # until we are successful.
                 return None
             else:
-                logger.warn("Failed to generate a light curve for redshift "
-                            "%.2f. Retrying." % augmented_metadata['redshift'])
+                logger.warn(
+                    "Failed to generate a light curve for redshift "
+                    "%.2f. Retrying." % augmented_metadata["redshift"]
+                )
 
-    def augment_dataset(self, augment_name, dataset, num_augments,
-                        include_reference=True):
+    def augment_dataset(
+        self, augment_name, dataset, num_augments, include_reference=True
+    ):
         """Generate augmented versions of all objects in a dataset.
 
         Parameters
@@ -459,20 +473,24 @@ class Augmentor():
         """
         augmented_objects = []
 
-        for reference_object in tqdm(dataset.objects, desc='Object',
-                                     dynamic_ncols=True):
+        for reference_object in tqdm(
+            dataset.objects, desc="Object", dynamic_ncols=True
+        ):
             if include_reference:
                 augmented_objects.append(reference_object)
 
             for i in range(num_augments):
-                augmented_object = self.augment_object(reference_object,
-                                                       force_success=False)
+                augmented_object = self.augment_object(
+                    reference_object, force_success=False
+                )
                 if augmented_object is not None:
                     augmented_objects.append(augmented_object)
 
         augmented_dataset = Dataset.from_objects(
-            augment_name, augmented_objects, chunk=dataset.chunk,
-            num_chunks=dataset.num_chunks
+            augment_name,
+            augmented_objects,
+            chunk=dataset.chunk,
+            num_chunks=dataset.num_chunks,
         )
 
         return augmented_dataset

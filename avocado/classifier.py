@@ -6,6 +6,7 @@ from tqdm import tqdm
 from .settings import settings
 from .utils import logger, AvocadoException
 
+
 def get_classifier_path(name):
     """Get the path to where a classifier should be stored on disk
 
@@ -14,9 +15,8 @@ def get_classifier_path(name):
     name : str
         The unique name for the classifier.
     """
-    classifier_directory = settings['classifier_directory']
-    classifier_path = os.path.join(classifier_directory,
-                                   'classifier_%s.pkl' % name)
+    classifier_directory = settings["classifier_directory"]
+    classifier_path = os.path.join(classifier_directory, "classifier_%s.pkl" % name)
 
     return classifier_path
 
@@ -43,7 +43,7 @@ def evaluate_weights_flat(dataset, class_weights=None):
     """
     use_metadata = dataset.metadata
 
-    object_classes = use_metadata['class']
+    object_classes = use_metadata["class"]
     class_counts = object_classes.value_counts()
 
     norm_class_weights = {}
@@ -63,9 +63,15 @@ def evaluate_weights_flat(dataset, class_weights=None):
 
 
 def evaluate_weights_redshift(
-        dataset, class_weights=None, group_key=None,
-        min_redshift=None, max_redshift=None, num_bins=None,
-        min_bin_count=None, redshift_key=None):
+    dataset,
+    class_weights=None,
+    group_key=None,
+    min_redshift=None,
+    max_redshift=None,
+    num_bins=None,
+    min_bin_count=None,
+    redshift_key=None,
+):
     """Evaluate redshift-weighted weights to use to generate a
     rates-independent classifier.
 
@@ -121,24 +127,24 @@ def evaluate_weights_redshift(
         The weights that should be used for classification.
     """
     if group_key is None:
-        group_key = settings['redshift_weighting_group_key']
+        group_key = settings["redshift_weighting_group_key"]
     if min_redshift is None:
-        min_redshift = settings['redshift_weighting_min_redshift']
+        min_redshift = settings["redshift_weighting_min_redshift"]
     if max_redshift is None:
-        max_redshift = settings['redshift_weighting_max_redshift']
+        max_redshift = settings["redshift_weighting_max_redshift"]
     if num_bins is None:
-        num_bins = settings['redshift_weighting_num_bins']
+        num_bins = settings["redshift_weighting_num_bins"]
     if min_bin_count is None:
-        min_bin_count = \
-            settings['redshift_weighting_min_bin_count']
+        min_bin_count = settings["redshift_weighting_min_bin_count"]
     if redshift_key is None:
-        redshift_key = settings['redshift_weighting_redshift_key']
+        redshift_key = settings["redshift_weighting_redshift_key"]
 
     use_metadata = dataset.metadata
 
     # Create the initial bin range
-    redshift_bins = np.logspace(np.log10(min_redshift), np.log10(max_redshift),
-                                num_bins+1)
+    redshift_bins = np.logspace(
+        np.log10(min_redshift), np.log10(max_redshift), num_bins + 1
+    )
 
     # Replace the first and last bins with very small and large numbers to
     # effectively extend them to infinity.
@@ -149,14 +155,13 @@ def evaluate_weights_redshift(
     redshift_bins = np.hstack([-1e99, redshift_bins])
 
     # Figure out which redshift bin each object falls in.
-    redshift_indices = np.searchsorted(
-        redshift_bins, use_metadata[redshift_key]) - 1
+    redshift_indices = np.searchsorted(redshift_bins, use_metadata[redshift_key]) - 1
 
     # Figure out how many different classes there are, and create a mapping for
     # them.
-    object_classes = use_metadata['class']
+    object_classes = use_metadata["class"]
     class_names = np.unique(object_classes)
-    class_map = {class_name : i for i, class_name in enumerate(class_names)}
+    class_map = {class_name: i for i, class_name in enumerate(class_names)}
     class_indices = [class_map[i] for i in object_classes]
 
     # Figure out how many different groups there are, and create a mapping for
@@ -164,18 +169,17 @@ def evaluate_weights_redshift(
     if group_key is not None:
         groups = use_metadata[group_key]
         group_names = np.unique(groups)
-        group_map = {group_name : i for i, group_name in
-                     enumerate(group_names)}
+        group_map = {group_name: i for i, group_name in enumerate(group_names)}
         group_indices = [group_map[i] for i in groups]
     else:
-        group_names = ['default']
+        group_names = ["default"]
         group_indices = np.zeros(len(use_metadata), dtype=int)
 
     # Count how many objects are in each bin.
-    counts = np.zeros((len(group_names), len(redshift_bins) - 1,
-                       len(class_names)))
-    for group_index, redshift_index, class_index in \
-            zip(group_indices, redshift_indices, class_indices):
+    counts = np.zeros((len(group_names), len(redshift_bins) - 1, len(class_names)))
+    for group_index, redshift_index, class_index in zip(
+        group_indices, redshift_indices, class_indices
+    ):
         counts[group_index, redshift_index, class_index] += 1
 
     total_counts = np.sum(counts)
@@ -220,7 +224,7 @@ def evaluate_weights_redshift(
     return object_weights
 
 
-class Classifier():
+class Classifier:
     """Classifier used to classify the different objects in a dataset.
 
     Parameters
@@ -228,6 +232,7 @@ class Classifier():
     name : str
         The name of the classifier.
     """
+
     def __init__(self, name):
         self.name = name
 
@@ -290,12 +295,10 @@ class Classifier():
                 logger.warning("Overwriting %s..." % path)
                 os.remove(path)
             else:
-                raise AvocadoException(
-                    "Dataset %s already exists! Can't write." % path
-                )
+                raise AvocadoException("Dataset %s already exists! Can't write." % path)
 
         # Write the classifier to a pickle file
-        with open(path, 'wb') as output_file:
+        with open(path, "wb") as output_file:
             pickle.dump(self, output_file)
 
     @classmethod
@@ -312,7 +315,7 @@ class Classifier():
         path = get_classifier_path(name)
 
         # Write the classifier to a pickle file
-        with open(path, 'rb') as input_file:
+        with open(path, "rb") as input_file:
             classifier = pickle.load(input_file)
 
         return classifier
@@ -340,8 +343,14 @@ class LightGBMClassifier(Classifier):
         objects equal weights. Any weights function can be used here as long as
         it has the same signature as `evaluate_weights_flat`.
     """
-    def __init__(self, name, featurizer, class_weights=None,
-                 weighting_function=evaluate_weights_flat):
+
+    def __init__(
+        self,
+        name,
+        featurizer,
+        class_weights=None,
+        weighting_function=evaluate_weights_flat,
+    ):
         super().__init__(name)
 
         self.featurizer = featurizer
@@ -370,14 +379,14 @@ class LightGBMClassifier(Classifier):
         num_folds = np.max(folds) + 1
 
         object_weights = self.weighting_function(dataset, self.class_weights)
-        object_classes = dataset.metadata['class']
+        object_classes = dataset.metadata["class"]
         classes = np.unique(object_classes)
 
         importances = pd.DataFrame()
         predictions = pd.DataFrame(
             -1 * np.ones((len(object_classes), len(classes))),
             index=dataset.metadata.index,
-            columns=classes
+            columns=classes,
         )
 
         classifiers = []
@@ -396,8 +405,12 @@ class LightGBMClassifier(Classifier):
             validation_weights = object_weights[validation_mask]
 
             classifier = fit_lightgbm_classifier(
-                train_features, train_classes, train_weights,
-                validation_features, validation_classes, validation_weights,
+                train_features,
+                train_classes,
+                train_weights,
+                validation_features,
+                validation_classes,
+                validation_weights,
                 **kwargs
             )
 
@@ -408,18 +421,19 @@ class LightGBMClassifier(Classifier):
             predictions[validation_mask] = validation_predictions
 
             importance = pd.DataFrame()
-            importance['feature'] = features.columns
-            importance['gain'] = classifier.feature_importances_
-            importance['fold'] = fold + 1
-            importances = pd.concat([importances, importance], axis=0,
-                                    sort=False)
+            importance["feature"] = features.columns
+            importance["gain"] = classifier.feature_importances_
+            importance["fold"] = fold + 1
+            importances = pd.concat([importances, importance], axis=0, sort=False)
 
             classifiers.append(classifier)
 
         # Statistics on out-of-sample predictions
         total_logloss = weighted_multi_logloss(
-            object_classes, predictions, object_weights=object_weights,
-            class_weights=self.class_weights
+            object_classes,
+            predictions,
+            object_weights=object_weights,
+            class_weights=self.class_weights,
         )
         unweighted_total_logloss = weighted_multi_logloss(
             object_classes, predictions, class_weights=self.class_weights
@@ -429,13 +443,13 @@ class LightGBMClassifier(Classifier):
         print("    Without object weights: %.5f" % unweighted_total_logloss)
 
         # Original sample only (no augments)
-        if 'reference_object_id' in dataset.metadata:
-            original_mask = dataset.metadata['reference_object_id'].isnull()
+        if "reference_object_id" in dataset.metadata:
+            original_mask = dataset.metadata["reference_object_id"].isnull()
             original_logloss = weighted_multi_logloss(
                 object_classes[original_mask],
                 predictions[original_mask],
                 object_weights=object_weights[original_mask],
-                class_weights=self.class_weights
+                class_weights=self.class_weights,
             )
             unweighted_original_logloss = weighted_multi_logloss(
                 object_classes[original_mask],
@@ -444,8 +458,7 @@ class LightGBMClassifier(Classifier):
             )
             print("Original un-augmented dataset weighted log-loss:")
             print("    With object weights:    %.5f" % original_logloss)
-            print("    Without object weights: %.5f" %
-                  unweighted_original_logloss)
+            print("    Without object weights: %.5f" % unweighted_original_logloss)
 
         self.importances = importances
         self.train_predictions = predictions
@@ -471,11 +484,9 @@ class LightGBMClassifier(Classifier):
 
         predictions = 0
 
-        for classifier in tqdm(self.classifiers, desc='Classifier',
-                               dynamic_ncols=True):
+        for classifier in tqdm(self.classifiers, desc="Classifier", dynamic_ncols=True):
             fold_scores = classifier.predict_proba(
-                features, raw_score=True,
-                num_iteration=classifier.best_iteration_
+                features, raw_score=True, num_iteration=classifier.best_iteration_
             )
 
             exp_scores = np.exp(fold_scores)
@@ -485,15 +496,22 @@ class LightGBMClassifier(Classifier):
 
         predictions /= len(self.classifiers)
 
-        predictions = pd.DataFrame(predictions, index=features.index,
-                                   columns=self.train_predictions.columns)
+        predictions = pd.DataFrame(
+            predictions, index=features.index, columns=self.train_predictions.columns
+        )
 
         return predictions
 
 
-def fit_lightgbm_classifier(train_features, train_classes, train_weights,
-                            validation_features, validation_classes,
-                            validation_weights, **kwargs):
+def fit_lightgbm_classifier(
+    train_features,
+    train_classes,
+    train_weights,
+    validation_features,
+    validation_classes,
+    validation_weights,
+    **kwargs
+):
     """Fit a LightGBM classifier
 
     Parameters
@@ -521,33 +539,30 @@ def fit_lightgbm_classifier(train_features, train_classes, train_weights,
     import lightgbm as lgb
 
     lgb_params = {
-        'boosting_type': 'gbdt',
-        'objective': 'multiclass',
-        'num_class': len(np.unique(train_classes)),
-        'metric': 'multi_logloss',
-        'learning_rate': 0.05,
-        'colsample_bytree': .5,
-        'reg_alpha': 0.,
-        'reg_lambda': 0.,
-        'min_split_gain': 10.,
-        'min_child_weight': 2000.,
-        'n_estimators': 5000,
-        'silent': -1,
-        'verbose': -1,
-        'max_depth': 7,
-        'num_leaves': 50,
+        "boosting_type": "gbdt",
+        "objective": "multiclass",
+        "num_class": len(np.unique(train_classes)),
+        "metric": "multi_logloss",
+        "learning_rate": 0.05,
+        "colsample_bytree": 0.5,
+        "reg_alpha": 0.0,
+        "reg_lambda": 0.0,
+        "min_split_gain": 10.0,
+        "min_child_weight": 2000.0,
+        "n_estimators": 5000,
+        "silent": -1,
+        "verbose": -1,
+        "max_depth": 7,
+        "num_leaves": 50,
     }
 
     lgb_params.update(kwargs)
 
-    fit_params = {
-        'verbose': 100,
-        'sample_weight': train_weights,
-    }
+    fit_params = {"verbose": 100, "sample_weight": train_weights}
 
-    fit_params['eval_set'] = [(validation_features, validation_classes)]
-    fit_params['early_stopping_rounds'] = 50
-    fit_params['eval_sample_weight'] = [validation_weights]
+    fit_params["eval_set"] = [(validation_features, validation_classes)]
+    fit_params["early_stopping_rounds"] = 50
+    fit_params["eval_sample_weight"] = [validation_weights]
 
     classifier = lgb.LGBMClassifier(**lgb_params)
     classifier.fit(train_features, train_classes, **fit_params)
@@ -555,9 +570,13 @@ def fit_lightgbm_classifier(train_features, train_classes, train_weights,
     return classifier
 
 
-def weighted_multi_logloss(true_classes, predictions, object_weights=None,
-                           class_weights=None,
-                           return_object_contributions=False):
+def weighted_multi_logloss(
+    true_classes,
+    predictions,
+    object_weights=None,
+    class_weights=None,
+    return_object_contributions=False,
+):
     """Evaluate a weighted multi-class logloss function.
 
     Parameters
@@ -588,8 +607,7 @@ def weighted_multi_logloss(true_classes, predictions, object_weights=None,
         instead.
     """
     object_loglosses = pd.Series(
-        1e10 * np.ones(len(true_classes)),
-        index=true_classes.index
+        1e10 * np.ones(len(true_classes)), index=true_classes.index
     )
 
     sum_class_weights = 0
@@ -623,7 +641,8 @@ def weighted_multi_logloss(true_classes, predictions, object_weights=None,
 
         class_loglosses = (
             -class_weight
-            * class_object_weights * np.log(class_predictions)
+            * class_object_weights
+            * np.log(class_predictions)
             / np.sum(class_object_weights)
         )
 

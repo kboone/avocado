@@ -17,4 +17,4 @@ load = Dataset.load
 load_classifier = Classifier.load
 
 
-__all__ = ['Dataset', 'AstronomicalObject']
+__all__ = ["Dataset", "AstronomicalObject"]

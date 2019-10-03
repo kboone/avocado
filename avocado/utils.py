@@ -8,12 +8,13 @@ from . import settings
 
 # Logging
 logging.basicConfig(stream=sys.stdout)
-logger = logging.getLogger('avocado')
+logger = logging.getLogger("avocado")
 
 
 # Exceptions
 class AvocadoException(Exception):
-    """The base class for all exceptions raised in avocado.""" 
+    """The base class for all exceptions raised in avocado."""
+
     pass
 
 
@@ -31,19 +32,19 @@ def _verify_hdf_chunks(store, keys):
     keys : list
         A list of keys to verify in the HDF5 file.
     """
-    if 'chunk_info' not in store:
+    if "chunk_info" not in store:
         # No chunk_info. The file wasn't written by chunks so there is nothing
         # to do.
         return
 
-    chunk_info = pd.read_hdf(store, 'chunk_info')
+    chunk_info = pd.read_hdf(store, "chunk_info")
 
     missing_chunks = {key: list() for key in keys}
 
     valid = True
 
     for chunk_id, chunk_str in chunk_info.itertuples():
-        chunk_keys = chunk_str.split(',')
+        chunk_keys = chunk_str.split(",")
 
         for key in keys:
             if key not in chunk_keys:
@@ -52,19 +53,21 @@ def _verify_hdf_chunks(store, keys):
 
     if not valid:
         # Missing some keys, raise an exception.
-        missing_str = ''
+        missing_str = ""
         show_chunks = 5
         for key, chunks in missing_chunks.items():
             if len(chunks) == 0:
                 continue
 
-            chunk_str = ', '.join([str(i) for i in chunks[:5]])
+            chunk_str = ", ".join([str(i) for i in chunks[:5]])
             if len(chunks) > show_chunks:
-                chunk_str += ', ... (%d total)' % len(chunks)
-            missing_str += '\n    %s: %s' % (key, chunk_str)
+                chunk_str += ", ... (%d total)" % len(chunks)
+            missing_str += "\n    %s: %s" % (key, chunk_str)
 
-        message = "File %s is missing the following chunks: %s" \
-            % (store.filename, missing_str)
+        message = "File %s is missing the following chunks: %s" % (
+            store.filename,
+            missing_str,
+        )
 
         raise AvocadoException(message)
 
@@ -76,18 +79,24 @@ def _map_column_name(key_store, target_name):
     instead of the desired name. Handle that gracefully.
     """
     try:
-        index_name = key_store.attrs.info['index']['index_name']
+        index_name = key_store.attrs.info["index"]["index_name"]
     except KeyError:
-        index_name = ''
+        index_name = ""
 
     if index_name == target_name:
-        return 'index'
+        return "index"
     else:
         return target_name
 
 
-def read_dataframes(path, keys, chunk=None, num_chunks=None,
-                    chunk_column='object_id', verify_input_chunks=True):
+def read_dataframes(
+    path,
+    keys,
+    chunk=None,
+    num_chunks=None,
+    chunk_column="object_id",
+    verify_input_chunks=True,
+):
     """Read a set of pandas DataFrames from an HDF5 file
 
     Optionally, the DataFrames can be read in chunks. If that is the case, the
@@ -129,7 +138,7 @@ def read_dataframes(path, keys, chunk=None, num_chunks=None,
     dataframes : list
         The list of :class:`pandas.DataFrame` objects that were read.
     """
-    store = pd.HDFStore(path, 'r')
+    store = pd.HDFStore(path, "r")
 
     # If the input was written in chunks, verify that they are all available.
     if verify_input_chunks:
@@ -155,9 +164,7 @@ def read_dataframes(path, keys, chunk=None, num_chunks=None,
 
     if chunk < 0 or chunk >= num_chunks:
         store.close()
-        raise AvocadoException(
-            "chunk must be in range [0, num_chunks)!"
-        )
+        raise AvocadoException("chunk must be in range [0, num_chunks)!")
 
     first = True
 
@@ -187,8 +194,8 @@ def read_dataframes(path, keys, chunk=None, num_chunks=None,
             start_idx = chunk * num_rows // num_chunks
             end_idx = (chunk + 1) * num_rows // num_chunks - 1
 
-            start_object_id = index.read_sorted(start_idx, start_idx+1)[0]
-            end_object_id = index.read_sorted(end_idx, end_idx+1)[0]
+            start_object_id = index.read_sorted(start_idx, start_idx + 1)[0]
+            end_object_id = index.read_sorted(end_idx, end_idx + 1)[0]
 
             start_object_id = start_object_id.decode().strip()
             end_object_id = end_object_id.decode().strip()
@@ -196,9 +203,11 @@ def read_dataframes(path, keys, chunk=None, num_chunks=None,
             first = False
 
         # Read the DataFrame
-        match_str = (
-            "(%s >= '%s') & (%s <= '%s')"
-            % (use_name, start_object_id, use_name, end_object_id)
+        match_str = "(%s >= '%s') & (%s <= '%s')" % (
+            use_name,
+            start_object_id,
+            use_name,
+            end_object_id,
         )
         dataframe = pd.read_hdf(store, key, where=match_str)
         dataframe.sort_index(inplace=True)
@@ -209,9 +218,18 @@ def read_dataframes(path, keys, chunk=None, num_chunks=None,
     return dataframes
 
 
-def write_dataframe(path, dataframe, key, overwrite=False, append=None,
-                    timeout=5, chunk=None, num_chunks=None,
-                    chunk_column='object_id', index_chunk_column=True):
+def write_dataframe(
+    path,
+    dataframe,
+    key,
+    overwrite=False,
+    append=None,
+    timeout=5,
+    chunk=None,
+    num_chunks=None,
+    chunk_column="object_id",
+    index_chunk_column=True,
+):
     """Write a dataframe out to an HDF5 file
 
     The append functionality is designed so that multiple independent
@@ -284,14 +302,12 @@ def write_dataframe(path, dataframe, key, overwrite=False, append=None,
             # there already.
             pass
         else:
-            raise AvocadoException(
-                "Dataset %s already exists! Can't write." % path
-            )
+            raise AvocadoException("Dataset %s already exists! Can't write." % path)
 
     # Get a lock on the HDF5 file.
     while True:
         try:
-            store = pd.HDFStore(path, 'a')
+            store = pd.HDFStore(path, "a")
         except HDF5ExtError:
             # Failed to get a lock on the file. If we are in append mode,
             # another process likely has the lock already, so wait and try
@@ -301,8 +317,7 @@ def write_dataframe(path, dataframe, key, overwrite=False, append=None,
 
             logger.info(
                 "Couldn't get lock for HDF5 file %s... another process is "
-                "probably using it. Retrying in %d seconds."
-                % (path, timeout)
+                "probably using it. Retrying in %d seconds." % (path, timeout)
             )
 
             time.sleep(timeout)
@@ -313,14 +328,13 @@ def write_dataframe(path, dataframe, key, overwrite=False, append=None,
     # If we are writing out chunks, make sure that this chunk hasn't already
     # been written to this file.
     if chunk is not None:
-        if 'chunk_info' in store:
-            chunk_info = pd.read_hdf(store, 'chunk_info')
+        if "chunk_info" in store:
+            chunk_info = pd.read_hdf(store, "chunk_info")
         else:
             # No chunk_info yet, create it.
             chunk_index = [i for i in range(num_chunks)]
-            chunk_values = ['' for i in range(num_chunks)]
-            chunk_info = pd.DataFrame({'keys': chunk_values},
-                                      index=chunk_index)
+            chunk_values = ["" for i in range(num_chunks)]
+            chunk_info = pd.DataFrame({"keys": chunk_values}, index=chunk_index)
 
         # Make sure that the chunk_info has the right number of chunks.
         file_num_chunks = len(chunk_info)
@@ -331,7 +345,7 @@ def write_dataframe(path, dataframe, key, overwrite=False, append=None,
             )
 
         # Make sure that we haven't already written any of the keys.
-        written_keys = chunk_info.loc[chunk, 'keys'].split(',')
+        written_keys = chunk_info.loc[chunk, "keys"].split(",")
 
         if key in written_keys:
             raise AvocadoException(
@@ -342,15 +356,16 @@ def write_dataframe(path, dataframe, key, overwrite=False, append=None,
         written_keys.append(key)
 
         # Remove the empty key that is created the first time around.
-        if '' in written_keys:
-            written_keys.remove('')
+        if "" in written_keys:
+            written_keys.remove("")
 
         # Update the written keys with the ones that we are adding.
-        chunk_info.loc[chunk, 'keys'] = ','.join(written_keys)
-        chunk_info.to_hdf(store, 'chunk_info', format='table')
+        chunk_info.loc[chunk, "keys"] = ",".join(written_keys)
+        chunk_info.to_hdf(store, "chunk_info", format="table")
 
-    dataframe.to_hdf(store, key, mode='a', append=append, format='table',
-                     data_columns=[chunk_column])
+    dataframe.to_hdf(
+        store, key, mode="a", append=append, format="table", data_columns=[chunk_column]
+    )
 
     if index_chunk_column:
         _create_csi_index(store, key, chunk_column)

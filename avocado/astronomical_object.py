@@ -7,11 +7,15 @@ import numpy as np
 import pandas as pd
 from scipy.optimize import minimize
 
-from .instruments import get_band_central_wavelength, get_band_plot_color, \
-    get_band_plot_marker
+from .instruments import (
+    get_band_central_wavelength,
+    get_band_plot_color,
+    get_band_plot_marker,
+)
 from .utils import logger
 
-class AstronomicalObject():
+
+class AstronomicalObject:
     """An astronomical object, with metadata and a lightcurve.
 
     An astronomical object has both metadata describing its global properties,
@@ -48,6 +52,7 @@ class AstronomicalObject():
         - flux: The measured flux value of the observation.
         - flux_error: The flux measurement uncertainty of the observation.
     """
+
     def __init__(self, metadata, observations):
         """Create a new AstronomicalObject"""
         self.metadata = dict(metadata)
@@ -56,7 +61,7 @@ class AstronomicalObject():
         self._default_gaussian_process = None
 
     def __repr__(self):
-        return "AstronomicalObject(object_id=%s)" % self.metadata['object_id']
+        return "AstronomicalObject(object_id=%s)" % self.metadata["object_id"]
 
     @property
     def bands(self):
@@ -67,9 +72,8 @@ class AstronomicalObject():
         bands : numpy.array
             A list of bands, ordered by their central wavelength.
         """
-        unsorted_bands = np.unique(self.observations['band'])
-        sorted_bands = np.array(sorted(unsorted_bands,
-                                       key=get_band_central_wavelength))
+        unsorted_bands = np.unique(self.observations["band"])
+        sorted_bands = np.array(sorted(unsorted_bands, key=get_band_central_wavelength))
         return sorted_bands
 
     def subtract_background(self):
@@ -90,13 +94,13 @@ class AstronomicalObject():
         subtracted_observations = self.observations.copy()
 
         for band in self.bands:
-            mask = self.observations['band'] == band
+            mask = self.observations["band"] == band
             band_data = self.observations[mask]
 
             # Use a biweight location to estimate the background
-            ref_flux = biweight_location(band_data['flux'])
+            ref_flux = biweight_location(band_data["flux"])
 
-            subtracted_observations.loc[mask, 'flux'] -= ref_flux
+            subtracted_observations.loc[mask, "flux"] -= ref_flux
 
         return subtracted_observations
 
@@ -132,8 +136,13 @@ class AstronomicalObject():
 
         return preprocessed_observations
 
-    def fit_gaussian_process(self, fix_scale=False, verbose=False,
-                             guess_length_scale=20., **preprocessing_kwargs):
+    def fit_gaussian_process(
+        self,
+        fix_scale=False,
+        verbose=False,
+        guess_length_scale=20.0,
+        **preprocessing_kwargs
+    ):
         """Fit a Gaussian Process model to the light curve.
 
         We use a 2-dimensional Matern kernel to model the transient. The kernel
@@ -169,29 +178,27 @@ class AstronomicalObject():
         """
         gp_observations = self.preprocess_observations(**preprocessing_kwargs)
 
-        fluxes = gp_observations['flux']
-        flux_errors = gp_observations['flux_error']
+        fluxes = gp_observations["flux"]
+        flux_errors = gp_observations["flux_error"]
 
-        wavelengths = gp_observations['band'].map(get_band_central_wavelength)
-        times = gp_observations['time']
+        wavelengths = gp_observations["band"].map(get_band_central_wavelength)
+        times = gp_observations["time"]
 
         # Use the highest signal-to-noise observation to estimate the scale. We
         # include an error floor so that in the case of very high
         # signal-to-noise observations we pick the maximum flux value.
-        signal_to_noises = (
-            np.abs(fluxes) /
-            np.sqrt(flux_errors**2 + (1e-2 * np.max(fluxes))**2)
+        signal_to_noises = np.abs(fluxes) / np.sqrt(
+            flux_errors ** 2 + (1e-2 * np.max(fluxes)) ** 2
         )
         scale = np.abs(fluxes[signal_to_noises.idxmax()])
 
-        kernel = (
-            (0.5 * scale)**2 *
-            kernels.Matern32Kernel([guess_length_scale**2, 6000**2], ndim=2)
+        kernel = (0.5 * scale) ** 2 * kernels.Matern32Kernel(
+            [guess_length_scale ** 2, 6000 ** 2], ndim=2
         )
 
         if fix_scale:
-            kernel.freeze_parameter('k1:log_constant')
-        kernel.freeze_parameter('k2:metric:log_M_1_1')
+            kernel.freeze_parameter("k1:log_constant")
+        kernel.freeze_parameter("k2:metric:log_M_1_1")
 
         gp = george.GP(kernel)
 
@@ -212,18 +219,12 @@ class AstronomicalObject():
             gp.set_parameter_vector(p)
             return -gp.grad_log_likelihood(fluxes)
 
-        bounds = [(0, np.log(1000**2))]
+        bounds = [(0, np.log(1000 ** 2))]
         if not fix_scale:
-            bounds = (
-                [(guess_parameters[0] - 10, guess_parameters[0] + 10)]
-                + bounds
-            )
+            bounds = [(guess_parameters[0] - 10, guess_parameters[0] + 10)] + bounds
 
         fit_result = minimize(
-            neg_ln_like,
-            gp.get_parameter_vector(),
-            jac=grad_neg_ln_like,
-            bounds=bounds,
+            neg_ln_like, gp.get_parameter_vector(), jac=grad_neg_ln_like, bounds=bounds
         )
 
         if fit_result.success:
@@ -232,8 +233,10 @@ class AstronomicalObject():
             # Fit failed. Print out a warning, and use the initial guesses for
             # fit parameters. This only really seems to happen for objects
             # where the lightcurve is almost entirely noise.
-            logger.warn("GP fit failed for %s! Using guessed GP parameters. "
-                        "This is usually OK." % self)
+            logger.warn(
+                "GP fit failed for %s! Using guessed GP parameters. "
+                "This is usually OK." % self
+            )
             gp.set_parameter_vector(guess_parameters)
 
         if verbose:
@@ -258,8 +261,9 @@ class AstronomicalObject():
 
         return self._default_gaussian_process
 
-    def predict_gaussian_process(self, bands, times, uncertainties=True,
-                                 fitted_gp=None, **gp_kwargs):
+    def predict_gaussian_process(
+        self, bands, times, uncertainties=True, fitted_gp=None, **gp_kwargs
+    ):
         """Predict the Gaussian process in a given set of bands and at a given
         set of times.
 
@@ -301,9 +305,7 @@ class AstronomicalObject():
         prediction_uncertainties = []
 
         for band in bands:
-            wavelengths = (
-                np.ones(len(times)) * get_band_central_wavelength(band)
-            )
+            wavelengths = np.ones(len(times)) * get_band_central_wavelength(band)
             pred_x_data = np.vstack([times, wavelengths]).T
             if uncertainties:
                 band_pred, band_pred_var = gp(pred_x_data, return_var=True)
@@ -319,8 +321,7 @@ class AstronomicalObject():
         else:
             return predictions
 
-    def plot_light_curve(self, show_gp=True, verbose=False, axis=None,
-                         **kwargs):
+    def plot_light_curve(self, show_gp=True, verbose=False, axis=None, **kwargs):
         """Plot the object's light curve
 
         Parameters
@@ -343,15 +344,16 @@ class AstronomicalObject():
             self.print_metadata()
 
         if show_gp:
-            gp, observations, gp_fit_parameters = \
-                self.fit_gaussian_process(verbose=verbose, **kwargs)
+            gp, observations, gp_fit_parameters = self.fit_gaussian_process(
+                verbose=verbose, **kwargs
+            )
         else:
             observations = self.preprocess_observations(**kwargs)
 
         # Figure out the times to plot. We go 10% past the edges of the
         # observations.
-        min_time_obs = np.min(observations['time'])
-        max_time_obs = np.max(observations['time'])
+        min_time_obs = np.min(observations["time"])
+        max_time_obs = np.max(observations["time"])
         border = 0.1 * (max_time_obs - min_time_obs)
         min_time = min_time_obs - border
         max_time = max_time_obs + border
@@ -359,22 +361,29 @@ class AstronomicalObject():
         if show_gp:
             pred_times = np.arange(min_time, max_time + 1)
 
-            predictions, prediction_uncertainties = \
-                self.predict_gaussian_process(self.bands, pred_times,
-                                              fitted_gp=gp)
+            predictions, prediction_uncertainties = self.predict_gaussian_process(
+                self.bands, pred_times, fitted_gp=gp
+            )
 
         if axis is None:
             figure, axis = plt.subplots()
 
         for band_idx, band in enumerate(self.bands):
-            mask = observations['band'] == band
+            mask = observations["band"] == band
             band_data = observations[mask]
             color = get_band_plot_color(band)
             marker = get_band_plot_marker(band)
 
-            axis.errorbar(band_data['time'], band_data['flux'],
-                          band_data['flux_error'], fmt='o', c=color,
-                          markersize=6, marker=marker, label=band)
+            axis.errorbar(
+                band_data["time"],
+                band_data["flux"],
+                band_data["flux_error"],
+                fmt="o",
+                c=color,
+                markersize=6,
+                marker=marker,
+                label=band,
+            )
 
             if not show_gp:
                 continue
@@ -383,16 +392,17 @@ class AstronomicalObject():
             axis.plot(pred_times, pred, c=color)
             err = prediction_uncertainties[band_idx]
 
-            if kwargs.get('uncertainties', True):
+            if kwargs.get("uncertainties", True):
                 # If they were calculated, show uncertainties with a shaded
                 # band.
-                axis.fill_between(pred_times, pred-err, pred+err, alpha=0.2,
-                                  color=color)
+                axis.fill_between(
+                    pred_times, pred - err, pred + err, alpha=0.2, color=color
+                )
 
         axis.legend()
 
-        axis.set_xlabel('Time (days)')
-        axis.set_ylabel('Flux')
+        axis.set_xlabel("Time (days)")
+        axis.set_ylabel("Flux")
         axis.set_xlim(min_time, max_time)
 
         axis.figure.tight_layout()
@@ -402,9 +412,16 @@ class AstronomicalObject():
         # Try to print out specific keys in a nice order. If these keys aren't
         # available, then we skip them. The rest of the keys are printed out in
         # a random order afterwards.
-        ordered_keys = ['object_id', 'class', 'galactic', 'fold',
-                        'redshift', 'host_specz', 'host_photoz',
-                        'host_photoz_error']
+        ordered_keys = [
+            "object_id",
+            "class",
+            "galactic",
+            "fold",
+            "redshift",
+            "host_specz",
+            "host_photoz",
+            "host_photoz_error",
+        ]
         for key in ordered_keys:
             if key in self.metadata:
                 print("%20s: %s" % (key, self.metadata[key]))

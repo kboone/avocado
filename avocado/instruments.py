@@ -7,33 +7,34 @@ from .utils import AvocadoException
 
 # Central wavelengths for each band.
 band_central_wavelengths = {
-    'lsstu': 3671.,
-    'lsstg': 4827.,
-    'lsstr': 6223.,
-    'lssti': 7546.,
-    'lsstz': 8691.,
-    'lssty': 9710.,
+    "lsstu": 3671.0,
+    "lsstg": 4827.0,
+    "lsstr": 6223.0,
+    "lssti": 7546.0,
+    "lsstz": 8691.0,
+    "lssty": 9710.0,
 }
 
 # Colors for plotting
 band_plot_colors = {
-    'lsstu': 'C6',
-    'lsstg': 'C4',
-    'lsstr': 'C0',
-    'lssti': 'C2',
-    'lsstz': 'C3',
-    'lssty': 'goldenrod',
+    "lsstu": "C6",
+    "lsstg": "C4",
+    "lsstr": "C0",
+    "lssti": "C2",
+    "lsstz": "C3",
+    "lssty": "goldenrod",
 }
 
 # Markers for plotting
 band_plot_markers = {
-    'lsstu': 'o',
-    'lsstg': 'v',
-    'lsstr': '^',
-    'lssti': '<',
-    'lsstz': '>',
-    'lssty': 's',
+    "lsstu": "o",
+    "lsstg": "v",
+    "lsstr": "^",
+    "lssti": "<",
+    "lsstz": ">",
+    "lssty": "s",
 }
+
 
 def get_band_central_wavelength(band):
     """Return the central wavelength for a given band.
@@ -53,6 +54,7 @@ def get_band_central_wavelength(band):
             "Central wavelength unknown for band %s. Add it to "
             "avocado.instruments.band_central_wavelengths." % band
         )
+
 
 def get_band_plot_color(band):
     """Return the plot color for a given band.
@@ -74,13 +76,15 @@ def get_band_plot_color(band):
     # Note: hash() uses a random offset in python 3 so it isn't consistent
     # between runs!
     import hashlib
+
     hasher = hashlib.md5()
-    hasher.update(band.encode('utf8'))
-    hex_color = '#%s' % hasher.hexdigest()[-6:]
+    hasher.update(band.encode("utf8"))
+    hex_color = "#%s" % hasher.hexdigest()[-6:]
 
     band_plot_colors[band] = hex_color
 
     return hex_color
+
 
 def get_band_plot_marker(band):
     """Return the plot marker for a given band.
@@ -96,4 +100,4 @@ def get_band_plot_marker(band):
     if band in band_plot_markers:
         return band_plot_markers[band]
     else:
-        return 'o'
+        return "o"

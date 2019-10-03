@@ -1,5 +1,6 @@
-class Featurizer():
+class Featurizer:
     """Class used to extract features from objects."""
+
     def extract_raw_features(self, astronomical_object, return_model=False):
         """Extract raw features from an object
 

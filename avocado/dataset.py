@@ -6,11 +6,17 @@ from tqdm import tqdm
 from sklearn.model_selection import StratifiedKFold
 
 from .astronomical_object import AstronomicalObject
-from .utils import logger, AvocadoException, write_dataframe, \
-    read_dataframes, read_dataframe
+from .utils import (
+    logger,
+    AvocadoException,
+    write_dataframe,
+    read_dataframes,
+    read_dataframe,
+)
 from .settings import settings
 
-class Dataset():
+
+class Dataset:
     """A dataset of many astronomical objects.
 
     Parameters
@@ -33,8 +39,16 @@ class Dataset():
         If the dataset was loaded in chunks, this is the total number of chunks
         used.
     """
-    def __init__(self, name, metadata, observations=None, objects=None,
-                 chunk=None, num_chunks=None):
+
+    def __init__(
+        self,
+        name,
+        metadata,
+        observations=None,
+        objects=None,
+        chunk=None,
+        num_chunks=None,
+    ):
         """Create a new Dataset from a set of metadata and observations"""
         # Make copies of everything so that we don't mess anything up.
         metadata = metadata.copy()
@@ -55,9 +69,8 @@ class Dataset():
             # Load each astronomical object in the dataset.
             self.objects = np.zeros(len(self.metadata), dtype=object)
             self.objects[:] = None
-            meta_dicts = self.metadata.to_dict('records')
-            for object_id, object_observations in \
-                    observations.groupby('object_id'):
+            meta_dicts = self.metadata.to_dict("records")
+            for object_id, object_observations in observations.groupby("object_id"):
                 meta_index = self.metadata.index.get_loc(object_id)
 
                 # Make sure that every object_id only appears once in the
@@ -70,9 +83,8 @@ class Dataset():
                     )
 
                 object_metadata = meta_dicts[meta_index]
-                object_metadata['object_id'] = object_id
-                new_object = AstronomicalObject(object_metadata,
-                                                object_observations)
+                object_metadata["object_id"] = object_id
+                new_object = AstronomicalObject(object_metadata, object_observations)
 
                 self.objects[meta_index] = new_object
 
@@ -84,8 +96,8 @@ class Dataset():
     @property
     def path(self):
         """Return the path to where this dataset should lie on disk"""
-        data_directory = settings['data_directory']
-        data_path = os.path.join(data_directory, self.name + '.h5')
+        data_directory = settings["data_directory"]
+        data_path = os.path.join(data_directory, self.name + ".h5")
 
         return data_path
 
@@ -100,11 +112,11 @@ class Dataset():
             settings['features_tag'].
         """
         if tag is None:
-            tag = settings['features_tag']
+            tag = settings["features_tag"]
 
-        features_directory = settings['features_directory']
+        features_directory = settings["features_directory"]
 
-        features_filename = '%s_%s.h5' % (tag, self.name)
+        features_filename = "%s_%s.h5" % (tag, self.name)
         features_path = os.path.join(features_directory, features_filename)
 
         return features_path
@@ -120,11 +132,11 @@ class Dataset():
             settings['features_tag'].
         """
         if tag is None:
-            tag = settings['features_tag']
+            tag = settings["features_tag"]
 
-        features_directory = settings['features_directory']
+        features_directory = settings["features_directory"]
 
-        models_filename = 'models_%s_%s.h5' % (tag, self.name)
+        models_filename = "models_%s_%s.h5" % (tag, self.name)
         models_path = os.path.join(features_directory, models_filename)
 
         return models_path
@@ -148,17 +160,13 @@ class Dataset():
         else:
             classifier_name = classifier.name
 
-        filename = "predictions_%s_%s.h5" % (
-            self.name, classifier_name
-        )
-        predictions_path = os.path.join(settings['predictions_directory'],
-                                        filename)
+        filename = "predictions_%s_%s.h5" % (self.name, classifier_name)
+        predictions_path = os.path.join(settings["predictions_directory"], filename)
 
         return predictions_path
 
     @classmethod
-    def load(cls, name, metadata_only=False, chunk=None, num_chunks=None,
-             **kwargs):
+    def load(cls, name, metadata_only=False, chunk=None, num_chunks=None, **kwargs):
         """Load a dataset that has been saved in HDF5 format in the data
         directory.
 
@@ -188,19 +196,20 @@ class Dataset():
         dataset : :class:`Dataset`
             The loaded dataset.
         """
-        data_directory = settings['data_directory']
-        data_path = os.path.join(data_directory, name + '.h5')
+        data_directory = settings["data_directory"]
+        data_path = os.path.join(data_directory, name + ".h5")
 
         if not os.path.exists(data_path):
             raise AvocadoException("Couldn't find dataset %s!" % name)
 
         if metadata_only:
-            keys = ['metadata']
+            keys = ["metadata"]
         else:
-            keys = ['metadata', 'observations']
+            keys = ["metadata", "observations"]
 
-        dataframes = read_dataframes(data_path, keys, chunk=chunk,
-                                     num_chunks=num_chunks, **kwargs)
+        dataframes = read_dataframes(
+            data_path, keys, chunk=chunk, num_chunks=num_chunks, **kwargs
+        )
 
         # Create a Dataset object
         dataset = cls(name, *dataframes, chunk=chunk, num_chunks=num_chunks)
@@ -227,7 +236,7 @@ class Dataset():
         """
         # Pull the metadata out of the objects
         metadata = pd.DataFrame([i.metadata for i in objects])
-        metadata.set_index('object_id', inplace=True)
+        metadata.set_index("object_id", inplace=True)
 
         # Load the new dataset.
         dataset = cls(name, metadata, objects=objects, **kwargs)
@@ -258,40 +267,41 @@ class Dataset():
             assigned fold for each object.
         """
         if num_folds is None:
-            num_folds = settings['num_folds']
+            num_folds = settings["num_folds"]
 
         if random_state is None:
-            random_state = settings['fold_random_state']
+            random_state = settings["fold_random_state"]
 
-        if 'class' not in self.metadata:
+        if "class" not in self.metadata:
             raise AvocadoException(
                 "Dataset %s does not have labeled classes! Can't separate "
                 "into folds." % self.name
             )
 
-        if 'reference_object_id' in self.metadata:
+        if "reference_object_id" in self.metadata:
             # We are operating on an augmented dataset. Use original objects to
             # determine the folds.
             is_augmented = True
-            reference_mask = self.metadata['reference_object_id'].isna()
+            reference_mask = self.metadata["reference_object_id"].isna()
             reference_metadata = self.metadata[reference_mask]
         else:
             is_augmented = False
             reference_metadata = self.metadata
 
-        reference_classes = reference_metadata['class']
-        folds = StratifiedKFold(n_splits=num_folds, shuffle=True,
-                                random_state=random_state)
+        reference_classes = reference_metadata["class"]
+        folds = StratifiedKFold(
+            n_splits=num_folds, shuffle=True, random_state=random_state
+        )
         fold_map = {}
-        for fold_number, (fold_train, fold_val) in \
-                enumerate(folds.split(reference_classes, reference_classes)):
+        for fold_number, (fold_train, fold_val) in enumerate(
+            folds.split(reference_classes, reference_classes)
+        ):
             for object_id in reference_metadata.index[fold_val]:
                 fold_map[object_id] = fold_number
 
         if is_augmented:
-            fold_indices = self.metadata['reference_object_id'].map(fold_map)
-            fold_indices[reference_mask] = \
-                self.metadata.index.to_series().map(fold_map)
+            fold_indices = self.metadata["reference_object_id"].map(fold_map)
+            fold_indices[reference_mask] = self.metadata.index.to_series().map(fold_map)
         else:
             fold_indices = self.metadata.index.to_series().map(fold_map)
 
@@ -338,7 +348,7 @@ class Dataset():
         if object_class is not None:
             # Figure out the target object_id and use that to get the index.
             class_index = index
-            class_meta = self.metadata[self.metadata['class'] == object_class]
+            class_meta = self.metadata[self.metadata["class"] == object_class]
             object_id = class_meta.index[class_index]
 
         if object_id is not None:
@@ -351,8 +361,7 @@ class Dataset():
 
         return self.objects[index]
 
-    def _get_object(self, index=None, object_class=None, object_id=None,
-                    **kwargs):
+    def _get_object(self, index=None, object_class=None, object_id=None, **kwargs):
         """Wrapper around get_object that returns unused kwargs.
 
         This function is used for the common situation of pulling an object out
@@ -387,8 +396,8 @@ class Dataset():
         """
         from ipywidgets import interact, IntSlider, Dropdown
 
-        object_classes = {'' : None}
-        for object_class in np.unique(self.metadata['class']):
+        object_classes = {"": None}
+        for object_class in np.unique(self.metadata["class"]):
             object_classes[object_class] = object_class
 
         idx_widget = IntSlider(min=0, max=1)
@@ -398,16 +407,23 @@ class Dataset():
             if class_widget.value is None:
                 idx_widget.max = len(self.metadata) - 1
             else:
-                idx_widget.max = np.sum(self.metadata['class'] ==
-                                        class_widget.value) - 1
+                idx_widget.max = (
+                    np.sum(self.metadata["class"] == class_widget.value) - 1
+                )
 
-        class_widget.observe(update_idx_range, 'value')
+        class_widget.observe(update_idx_range, "value")
 
         update_idx_range()
 
-        interact(self.plot_light_curve, index=idx_widget,
-                 object_class=class_widget, show_gp=True, uncertainties=True,
-                 verbose=False, subtract_background=True)
+        interact(
+            self.plot_light_curve,
+            index=idx_widget,
+            object_class=class_widget,
+            show_gp=True,
+            uncertainties=True,
+            verbose=False,
+            subtract_background=True,
+        )
 
     def write(self, **kwargs):
         """Write the dataset out to disk.
@@ -424,18 +440,27 @@ class Dataset():
         observations = []
         for obj in self.objects:
             object_observations = obj.observations
-            object_observations['object_id'] = obj.metadata['object_id']
+            object_observations["object_id"] = obj.metadata["object_id"]
             observations.append(object_observations)
         observations = pd.concat(observations, ignore_index=True, sort=False)
 
         write_dataframe(
-            self.path, self.metadata, 'metadata', chunk=self.chunk,
-            num_chunks=self.num_chunks, **kwargs
+            self.path,
+            self.metadata,
+            "metadata",
+            chunk=self.chunk,
+            num_chunks=self.num_chunks,
+            **kwargs
         )
 
         write_dataframe(
-            self.path, observations, 'observations', index_chunk_column=False,
-            chunk=self.chunk, num_chunks=self.num_chunks, **kwargs
+            self.path,
+            observations,
+            "observations",
+            index_chunk_column=False,
+            chunk=self.chunk,
+            num_chunks=self.num_chunks,
+            **kwargs
         )
 
     def extract_raw_features(self, featurizer, keep_models=False):
@@ -459,24 +484,24 @@ class Dataset():
         list_raw_features = []
         object_ids = []
         models = {}
-        for obj in tqdm(self.objects, desc='Object', dynamic_ncols=True):
+        for obj in tqdm(self.objects, desc="Object", dynamic_ncols=True):
             obj_features = featurizer.extract_raw_features(
-                obj, return_model=keep_models)
+                obj, return_model=keep_models
+            )
 
             if keep_models:
                 obj_features, model = obj_features
-                models[obj.metadata['object_id']] = model
+                models[obj.metadata["object_id"]] = model
 
             list_raw_features.append(obj_features.values())
-            object_ids.append(obj.metadata['object_id'])
+            object_ids.append(obj.metadata["object_id"])
 
         # Pull the keys off of the last extraction. They should be the same for
         # every set of features.
         keys = obj_features.keys()
 
-        raw_features = pd.DataFrame(list_raw_features, index=object_ids,
-                                    columns=keys)
-        raw_features.index.name = 'object_id'
+        raw_features = pd.DataFrame(list_raw_features, index=object_ids, columns=keys)
+        raw_features.index.name = "object_id"
 
         self.raw_features = raw_features
 
@@ -536,7 +561,7 @@ class Dataset():
         write_dataframe(
             raw_features_path,
             self.raw_features,
-            'raw_features',
+            "raw_features",
             chunk=self.chunk,
             num_chunks=self.num_chunks,
             **kwargs
@@ -560,7 +585,7 @@ class Dataset():
 
         self.raw_features = read_dataframe(
             raw_features_path,
-            'raw_features',
+            "raw_features",
             chunk=self.chunk,
             num_chunks=self.num_chunks,
             **kwargs
@@ -606,7 +631,7 @@ class Dataset():
         write_dataframe(
             predictions_path,
             self.predictions,
-            'predictions',
+            "predictions",
             chunk=self.chunk,
             num_chunks=self.num_chunks,
             **kwargs
@@ -631,7 +656,7 @@ class Dataset():
 
         self.predictions = read_dataframe(
             predictions_path,
-            'predictions',
+            "predictions",
             chunk=self.chunk,
             num_chunks=self.num_chunks,
             **kwargs
@@ -660,7 +685,7 @@ class Dataset():
         """
         models_path = self.get_models_path(tag=tag)
 
-        store = pd.HDFStore(models_path, 'a')
+        store = pd.HDFStore(models_path, "a")
         for model_name, model in self.models.items():
-            model.to_hdf(store, model_name, mode='a')
+            model.to_hdf(store, model_name, mode="a")
         store.close()
