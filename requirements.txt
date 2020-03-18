@@ -4,7 +4,8 @@ lightgbm
 matplotlib
 numpy
 pandas
-tables
+requests
 scikit-learn
 scipy
+tables
 tqdm
