@@ -88,9 +88,9 @@ if __name__ == "__main__":
         '"[working_directory]/jobs/featurize_[dataset]/"'
     )
     parser.add_argument(
-        '--qsub_arguments',
+        '--extra_arguments',
         default='',
-        help='Additional arguments to pass to qsub'
+        help='Additional arguments to pass to qsub or sbatch'
     )
 
     raw_args = parser.parse_args()
@@ -130,7 +130,7 @@ if __name__ == "__main__":
                 job_file.write(job_template)
 
             # Submit the job
-            subprocess.call(["qsub"] + args['qsub_arguments'].split() + [job_path])
+            subprocess.call(["qsub"] + args['extra_arguments'].split() + [job_path])
         else:
             job_template = slurm_template.format(**job_args)
 
@@ -139,4 +139,4 @@ if __name__ == "__main__":
                 job_file.write(job_template)
 
             # Submit the job
-            subprocess.call(["sbatch"] + args['qsub_arguments'].split() + [job_path])
+            subprocess.call(["sbatch"] + args['extra_arguments'].split() + [job_path])
