@@ -33,6 +33,25 @@ avocado_featurize \\
     --tag {tag}
 """
 
+slurm_template = """#!/bin/bash
+#SBATCH --export=ALL
+#SBATCH -J {job_name}
+#SBATCH -o {jobs_directory}/{job_name}.out
+#SBATCH -e {jobs_directory}/{job_name}.err
+
+# Use a single core for each job. This parallelizes better than trying to use
+# multiple cores per job.
+export MKL_NUM_THREADS=1
+export NUMEXPR_NUM_THREADS=1
+export OMP_NUM_THREADS=1
+
+cd {working_directory}
+avocado_featurize \\
+    {dataset} \\
+    --chunk {job} \\
+    --num_chunks {num_jobs} \\
+    --tag {tag}
+"""
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -58,15 +77,20 @@ if __name__ == "__main__":
         help='Working directory. Default is the current directory.'
     )
     parser.add_argument(
+        '--scheduler',
+        default="sge",
+        help='scheduler system. sge or slurm'
+    )
+    parser.add_argument(
         '--jobs_directory',
         default=None,
         help='Jobs directory for qsub scripts and output. Default is '
         '"[working_directory]/jobs/featurize_[dataset]/"'
     )
     parser.add_argument(
-        '--qsub_arguments',
+        '--extra_arguments',
         default='',
-        help='Additional arguments to pass to qsub'
+        help='Additional arguments to pass to qsub or sbatch'
     )
 
     raw_args = parser.parse_args()
@@ -86,7 +110,6 @@ if __name__ == "__main__":
         )
     os.makedirs(args['jobs_directory'], exist_ok=True)
 
-
     # Create and submit the jobs one by one
     for job_id in range(args['num_jobs']):
         job_args = args.copy()
@@ -98,11 +121,28 @@ if __name__ == "__main__":
 
         job_path = '{jobs_directory}/{job_name}.sh'.format(**job_args)
 
-        job_template = sge_template.format(**job_args)
+        if args['scheduler'] == "sge":
+            job_template = sge_template.format(**job_args)
 
-        # Write the jobs file
-        with open(job_path, 'w') as job_file:
-            job_file.write(job_template)
+            # Write the jobs file
+            with open(job_path, 'w') as job_file:
+                job_file.write(job_template)
 
-        # Submit the job
-        subprocess.call(["qsub"] + args['qsub_arguments'].split() + [job_path])
+            # Submit the job
+            subprocess.call(["qsub"] + args['extra_arguments'].split() + [job_path])
+        elif args['scheduler'] == "slurm":
+            job_template = slurm_template.format(**job_args)
+
+            # Write the jobs file
+            with open(job_path, 'w') as job_file:
+                job_file.write(job_template)
+
+            # Submit the job
+            subprocess.call(["sbatch"] + args['extra_arguments'].split() + [job_path])
+        else:
+            msg = """
+            Invalid scheduler name provided.
+
+            Please set scheduler to either "sge" or "slurm" depending on your system
+                  """
+            raise NameError(msg)
