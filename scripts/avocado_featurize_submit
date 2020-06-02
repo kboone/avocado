@@ -77,9 +77,9 @@ if __name__ == "__main__":
         help='Working directory. Default is the current directory.'
     )
     parser.add_argument(
-        '--schedular',
+        '--scheduler',
         default=None,
-        help='Schedular system. sge or slurm'
+        help='scheduler system. sge or slurm'
     )
     parser.add_argument(
         '--jobs_directory',
@@ -122,7 +122,7 @@ if __name__ == "__main__":
 
         job_path = '{jobs_directory}/{job_name}.sh'.format(**job_args)
 
-        if args['schedular'] is None:
+        if args['scheduler'] is None:
             job_template = sge_template.format(**job_args)
 
             # Write the jobs file
