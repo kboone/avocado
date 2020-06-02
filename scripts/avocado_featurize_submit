@@ -78,7 +78,7 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         '--scheduler',
-        default=None,
+        default="sge",
         help='scheduler system. sge or slurm'
     )
     parser.add_argument(
