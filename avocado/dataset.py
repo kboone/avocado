@@ -48,6 +48,7 @@ class Dataset:
         objects=None,
         chunk=None,
         num_chunks=None,
+        object_class=AstronomicalObject,
     ):
         """Create a new Dataset from a set of metadata and observations"""
         # Make copies of everything so that we don't mess anything up.
@@ -84,7 +85,7 @@ class Dataset:
 
                 object_metadata = meta_dicts[meta_index]
                 object_metadata["object_id"] = object_id
-                new_object = AstronomicalObject(object_metadata, object_observations)
+                new_object = object_class(object_metadata, object_observations)
 
                 self.objects[meta_index] = new_object
 
@@ -166,7 +167,8 @@ class Dataset:
         return predictions_path
 
     @classmethod
-    def load(cls, name, metadata_only=False, chunk=None, num_chunks=None, **kwargs):
+    def load(cls, name, metadata_only=False, chunk=None, num_chunks=None,
+             object_class=AstronomicalObject, **kwargs):
         """Load a dataset that has been saved in HDF5 format in the data
         directory.
 
@@ -212,7 +214,8 @@ class Dataset:
         )
 
         # Create a Dataset object
-        dataset = cls(name, *dataframes, chunk=chunk, num_chunks=num_chunks)
+        dataset = cls(name, *dataframes, chunk=chunk, num_chunks=num_chunks,
+                      object_class=object_class)
 
         return dataset
 
