@@ -28,6 +28,11 @@ band_plot_colors = {
     "lssti": "C2",
     "lsstz": "C3",
     "lssty": "goldenrod",
+
+    "ps1::g": "C4",
+    "ps1::r": "C0",
+    "ps1::i": "C2",
+    "ps1::z": "C3",
 }
 
 # Markers for plotting
@@ -38,6 +43,11 @@ band_plot_markers = {
     "lssti": "<",
     "lsstz": ">",
     "lssty": "s",
+
+    "ps1::g": "v",
+    "ps1::r": "^",
+    "ps1::i": "<",
+    "ps1::z": ">",
 }
 
 
