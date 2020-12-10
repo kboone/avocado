@@ -61,7 +61,7 @@ class AstronomicalObject:
         self._default_gaussian_process = None
 
     def __repr__(self):
-        return "AstronomicalObject(object_id=%s)" % self.metadata["object_id"]
+        return f"{type(self).__name__}(object_id={self.metadata['object_id']})"
 
     @property
     def bands(self):
