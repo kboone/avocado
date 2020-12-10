@@ -13,6 +13,11 @@ band_central_wavelengths = {
     "lssti": 7546.0,
     "lsstz": 8691.0,
     "lssty": 9710.0,
+
+    "ps1::g": 4866.0,
+    "ps1::r": 6214.6,
+    "ps1::i": 7544.6,
+    "ps1::z": 8679.5,
 }
 
 # Colors for plotting
