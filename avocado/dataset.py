@@ -425,7 +425,7 @@ class Dataset:
             subtract_background=True,
         )
 
-    def write(self, **kwargs):
+    def write(self, overwrite=False, **kwargs):
         """Write the dataset out to disk.
 
         The dataset will be stored in the data directory using the dataset's
@@ -450,6 +450,7 @@ class Dataset:
             "metadata",
             chunk=self.chunk,
             num_chunks=self.num_chunks,
+            overwrite=overwrite,
             **kwargs
         )
 
@@ -460,6 +461,7 @@ class Dataset:
             index_chunk_column=False,
             chunk=self.chunk,
             num_chunks=self.num_chunks,
+            append=True,
             **kwargs
         )
 

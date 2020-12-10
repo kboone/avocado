@@ -5,48 +5,10 @@ PLAsTiCC dataset comes in to PyTables HDF5 files that we can work with more
 easily. We also update header keywords to match the avocado naming convention.
 """
 import os
-import requests
-import shutil
 import pandas as pd
 from tqdm import tqdm
-from urllib.request import urlretrieve
 
 import avocado
-
-def download_file(url, path, filesize):
-    """Download a file with a tqdm progress bar. This code is adapted from an
-    example in the tqdm documentation.
-    """
-    # Check if the file already exists, and don't download it if it does.
-    if os.path.exists(path):
-        # Make sure that we have a full download
-        if os.path.getsize(path) == filesize:
-            print("Skipping %s, already exists." % os.path.basename(path))
-            return
-        else:
-            print("Found incomplete download of %s, retrying." %
-                  os.path.basename(path))
-            os.remove(path)
-
-    class TqdmUpTo(tqdm):
-        """Provides `update_to(n)` which uses `tqdm.update(delta_n)`."""
-        def update_to(self, b=1, bsize=1, tsize=None):
-            """
-            b  : int, optional
-                Number of blocks transferred so far [default: 1].
-            bsize  : int, optional
-                Size of each block (in tqdm units) [default: 1].
-            tsize  : int, optional
-                Total size (in tqdm units). If [default: None] remains unchanged.
-            """
-            if tsize is not None:
-                self.total = tsize
-            self.update(b * bsize - self.n)  # will also set self.n = b * bsize
-
-    with TqdmUpTo(unit='B', unit_scale=True, miniters=1,
-                  desc=url.split('/')[-1]) as t:  # all optional kwargs
-        urlretrieve(url, filename=path, reporthook=t.update_to, data=None)
-
 
 def update_plasticc_metadata(metadata):
     """Update raw PLAsTiCC metadata to follow the avocado conventions.
@@ -145,20 +107,8 @@ if __name__ == "__main__":
     basedir = avocado.settings['data_directory']
     rawdir = os.path.join(basedir, 'plasticc_raw')
 
-    # Make a directory to hold the raw data.
-    os.makedirs(rawdir, exist_ok=True)
-
-    # Download the PLAsTiCC dataset from zenodo
-    zenodo_url = "https://zenodo.org/api/records/2539456"
-    zenodo_metadata = requests.get(zenodo_url).json()
-
     print("Downloading the PLAsTiCC dataset from zenodo...\n")
-    for file_metadata in zenodo_metadata['files']:
-        path = os.path.join(rawdir, file_metadata['key'])
-        url = file_metadata['links']['self']
-        filesize = file_metadata['size']
-
-        download_file(url, path, filesize)
+    avocado.utils.download_zenodo("2539456", rawdir)
 
     print("\nPreprocessing the PLAsTiCC dataset...\n")
 

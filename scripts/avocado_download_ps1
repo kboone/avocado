@@ -1,0 +1,94 @@
+#!/usr/bin/env python
+"""
+Download and preprocess the PanSTARRS dataset from Villar et al. 2020. We convert the
+snana data files that this dataset comes in to PyTables HDF5 files that we can work
+with more easily. We also update header keywords to match the avocado naming
+convention.
+"""
+from astropy.table import Table
+from glob import glob
+import numpy as np
+from tqdm import tqdm
+import sncosmo
+import os
+import zipfile
+
+import avocado
+
+if __name__ == "__main__":
+    basedir = avocado.settings['data_directory']
+    rawdir = os.path.join(basedir, 'ps1_raw')
+
+    print("Downloading the PS1 dataset from zenodo...")
+    avocado.utils.download_zenodo("3974950", rawdir)
+
+    print("Unzipping light curves...")
+    with zipfile.ZipFile(os.path.join(rawdir, "ps1_sne_zenodo.zip"), "r") as zipdata:
+        zipdata.extractall(rawdir)
+
+    print("Downloading metadata...")
+    metadata_url = 'http://ashleyvillar.com/data/vav2020_table1.tex'
+    metadata_path = os.path.join(rawdir, 'vav2020_table1.tex')
+    avocado.utils.download_file(metadata_url, metadata_path)
+
+    print("Parsing metadata...")
+    raw_metadata = np.genfromtxt(metadata_path, delimiter=' & ', skip_header=7,
+                                 skip_footer=8, dtype=None, encoding='ascii')
+    metadata = Table(
+        raw_metadata,
+        names=[
+            'object_id', 'psc_id', 'iau_name', 'cbet', 'ra', 'dec', 'mwebv', 'type',
+            'redshift', 'host_ra', 'host_dec', 'num_points', 'telescope',
+            'supervised', 'unsupervised'
+        ]
+    )
+    metadata['supervised'] = [i[0] == 'Y' for i in metadata['supervised']]
+    metadata['unsupervised'] = [i[0] == 'Y' for i in metadata['unsupervised']]
+
+    print("Parsing light curves...")
+    objs = []
+    for path in tqdm(glob(os.path.join(rawdir, "ps1_sne_zenodo", "*.dat"))):
+        # Read the light curve
+        lc = sncosmo.read_snana_ascii(path, default_tablename='OBS')
+        lc_meta, lc_obs = lc
+
+        lc_meta = lc[0]
+        lc_obs = lc[1]['OBS']
+
+        # Rename its columns to match our naming scheme.
+        lc_obs.rename_columns(['MJD', 'FLT', 'FLUXCAL', 'FLUXCALERR'],
+                              ['time', 'band', 'flux', 'fluxerr'])
+        lc_obs['band'] = ['ps1::' + i for i in lc_obs['band']]
+
+        # Match the metadata
+        meta_match = metadata[metadata['psc_id'] == lc_meta['SNID']]
+        assert len(meta_match) == 1
+        meta = dict(meta_match[0])
+
+        # Update keys that should be floats, but that sometimes have missing values. We
+        # replace the missing values with nan.
+        float_keys = ['ra', 'dec', 'mwebv', 'redshift', 'host_ra', 'host_dec']
+        for float_key in float_keys:
+            try:
+                meta[float_key] = float(meta[float_key])
+            except ValueError:
+                meta[float_key] = np.nan
+
+        meta['name'] = meta['object_id']
+        meta['object_id'] = meta['psc_id']
+        del meta['psc_id']
+
+        # Add in keys that avocado expects
+        meta['galactic'] = False
+        meta['host_specz'] = meta['redshift']
+        meta['host_photoz'] = meta['redshift']
+        meta['host_photoz_err'] = 0.001
+
+        obj = avocado.AstronomicalObject(meta, lc_obs.to_pandas())
+        objs.append(obj)
+
+    print("Writing dataset...")
+    dataset = avocado.Dataset.from_objects('ps1', objs)
+    dataset.write(overwrite=True)
+
+    print("Done!")
