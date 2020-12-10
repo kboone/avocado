@@ -94,6 +94,15 @@ class Dataset:
         self.features = None
         self.models = None
 
+    def __getitem__(self, key):
+        """Return a dataset containing a subset of the objects.
+
+        key is the index to .objects to use.
+        """
+        new_objs = self.objects[key]
+        new_name = f"{self.name}_subset"
+        return Dataset.from_objects(new_name, new_objs)
+
     @property
     def path(self):
         """Return the path to where this dataset should lie on disk"""
