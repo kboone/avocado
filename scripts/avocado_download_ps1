@@ -39,7 +39,7 @@ if __name__ == "__main__":
         names=[
             'object_id', 'psc_id', 'iau_name', 'cbet', 'ra', 'dec', 'mwebv', 'type',
             'redshift', 'host_ra', 'host_dec', 'num_points', 'telescope',
-            'supervised', 'unsupervised'
+            'unsupervised', 'supervised'
         ]
     )
     metadata['supervised'] = [i[0] == 'Y' for i in metadata['supervised']]
@@ -57,7 +57,7 @@ if __name__ == "__main__":
 
         # Rename its columns to match our naming scheme.
         lc_obs.rename_columns(['MJD', 'FLT', 'FLUXCAL', 'FLUXCALERR'],
-                              ['time', 'band', 'flux', 'fluxerr'])
+                              ['time', 'band', 'flux', 'flux_error'])
         lc_obs['band'] = ['ps1::' + i for i in lc_obs['band']]
 
         # Match the metadata
