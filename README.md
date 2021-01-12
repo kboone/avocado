@@ -17,10 +17,12 @@ lightcurves that are generated are much more representative of the full
 datasets than the original spectroscopic samples.
 
 The original codebase of avocado was developed for and won the
-[2018 Kaggle PLAsTiCC challenge](https://kaggle.com/c/PLAsTiCC-2018). A 
-description of the algorithms used for this challenge can be found on the
-[kaggle forum](https://www.kaggle.com/c/PLAsTiCC-2018/discussion/75033). This
-analysis can be replicated using the latest version of avocado following the
+[2018 Kaggle PLAsTiCC challenge](https://kaggle.com/c/PLAsTiCC-2018). A
+paper describing the algorithms implemented in this package can be found
+[here](https://ui.adsabs.harvard.edu/abs/2019AJ....158..257B/abstract), and
+there is also a discussion available on the
+[kaggle forum](https://www.kaggle.com/c/PLAsTiCC-2018/discussion/75033). The
+PLAsTiCC results can be replicated using the latest version of avocado following the
 steps in the documentation.
 
 ## Installation and Usage
