@@ -6,8 +6,6 @@ import sys
 from tqdm import tqdm
 from urllib.request import urlretrieve
 
-from . import settings
-
 
 # Logging
 logging.basicConfig(stream=sys.stdout)
@@ -215,6 +213,45 @@ def read_dataframes(
         dataframe = pd.read_hdf(store, key, where=match_str)
         dataframe.sort_index(inplace=True)
 
+        dataframes.append(dataframe)
+
+    store.close()
+    return dataframes
+
+
+def read_dataframes_query(path, keys, query_key, query_column='object_id'):
+    """Read a set of pandas DataFrames for rows in an HDF5 matching a given query.
+
+    This is primarily used to read the observations for a single object without
+    having to load all of the other objects. To do this, pass the object ID as
+    `query_key`.
+
+    Parameters
+    ----------
+    path : str
+        Input file path
+    keys : list
+        A list of keys to read each DataFrame from in the HDF5 file.
+    query_key : str
+        Key to query for.
+    query_column : str
+        Column that the key is in.
+
+    Returns
+    -------
+    dataframes : list
+        The list of :class:`pandas.DataFrame` objects that were read.
+    """
+    store = pd.HDFStore(path, "r")
+
+    dataframes = []
+
+    for key in keys:
+        key_store = store.get_storer(key)
+        use_query_column = _map_column_name(key_store, query_column)
+        match_str = f"{use_query_column} == {query_key}"
+        dataframe = pd.read_hdf(store, key, where=match_str)
+        dataframe.sort_index(inplace=True)
         dataframes.append(dataframe)
 
     store.close()

@@ -7,11 +7,11 @@ from sklearn.model_selection import StratifiedKFold
 
 from .astronomical_object import AstronomicalObject
 from .utils import (
-    logger,
     AvocadoException,
     write_dataframe,
     read_dataframes,
     read_dataframe,
+    read_dataframes_query,
 )
 from .settings import settings
 
@@ -60,12 +60,13 @@ class Dataset:
         self.metadata = metadata
         self.chunk = chunk
         self.num_chunks = num_chunks
+        self.object_class = object_class
 
         self.predictions = None
         self.classifier = None
 
         if observations is None:
-            self.objects = objects
+            self.objects = np.asarray(objects)
         else:
             # Load each astronomical object in the dataset.
             self.objects = np.zeros(len(self.metadata), dtype=object)
@@ -85,7 +86,7 @@ class Dataset:
 
                 object_metadata = meta_dicts[meta_index]
                 object_metadata["object_id"] = object_id
-                new_object = object_class(object_metadata, object_observations)
+                new_object = self.object_class(object_metadata, object_observations)
 
                 self.objects[meta_index] = new_object
 
@@ -101,6 +102,11 @@ class Dataset:
         """
         new_objs = self.objects[key]
         new_name = f"{self.name}_subset"
+        return Dataset.from_objects(new_name, new_objs)
+
+    def __add__(self, dataset):
+        new_objs = np.concatenate([self.objects, dataset.objects])
+        new_name = f"{self.name}_cat_{dataset.name}"
         return Dataset.from_objects(new_name, new_objs)
 
     @property
@@ -389,6 +395,30 @@ class Dataset:
             Additional arguments passed to the function that weren't used.
         """
         return self.get_object(index, object_class, object_id), kwargs
+
+    def read_object(self, object_id, object_class=AstronomicalObject):
+        """Read an object with a given object_id.
+
+        This function is designed to be used when the Dataset was initialized with
+        only metadata, and can be used to read the observations for a single object
+        without having to read the full dataset.
+        """
+        dataframes = read_dataframes_query(self.path, ["metadata", "observations"],
+                                           object_id)
+
+        metadata = dataframes[0]
+
+        if len(metadata) != 1:
+            raise AvocadoException(f"No object with object_id='{object_id}'")
+
+        metadata = metadata.iloc[0].to_dict()
+        observations = dataframes[1]
+
+        # Pandas doesn't keep the index when you convert things to dictionaries, so add
+        # it back in.
+        metadata['object_id'] = object_id
+
+        return self.object_class(metadata, observations)
 
     def plot_light_curve(self, *args, **kwargs):
         """Plot the light curve for an object in the dataset.
