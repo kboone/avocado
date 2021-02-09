@@ -18,6 +18,11 @@ band_central_wavelengths = {
     "ps1::r": 6214.6,
     "ps1::i": 7544.6,
     "ps1::z": 8679.5,
+    
+    "desg": 4686.,
+    "desr": 6166.,
+    "desi": 7480.,
+    "desz": 8932.,
 }
 
 # Colors for plotting
@@ -33,6 +38,11 @@ band_plot_colors = {
     "ps1::r": "C0",
     "ps1::i": "C2",
     "ps1::z": "C3",
+    
+    "desg": "C4",
+    "desr": "C0",
+    "desi": "C2",
+    "desz": "C3",
 }
 
 # Markers for plotting
@@ -48,6 +58,11 @@ band_plot_markers = {
     "ps1::r": "^",
     "ps1::i": "<",
     "ps1::z": ">",
+    
+    "desg": "v",
+    "desr": "^",
+    "desi": "<",
+    "desz": ">",
 }
 
 
