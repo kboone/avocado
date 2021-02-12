@@ -5,11 +5,11 @@ import os
 import pandas as pd
 from scipy.special import erf
 
-from .dataset import Dataset
-from .utils import settings, AvocadoException, logger
-
 from .augment import Augmentor
+from .dataset import Dataset
 from .features import Featurizer
+from .settings import settings
+from .utils import AvocadoException, logger
 
 
 # PLAsTiCC specific parameters
