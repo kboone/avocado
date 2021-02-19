@@ -7,7 +7,8 @@ from tqdm import tqdm
 from .astronomical_object import AstronomicalObject
 from .dataset import Dataset
 from .instruments import get_band_central_wavelength
-from .utils import settings, logger
+from .settings import settings
+from .utils import logger
 
 
 class Augmentor:
