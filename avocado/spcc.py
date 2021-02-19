@@ -1,6 +1,6 @@
 # avocado script augmenting spcc - requires spcc_sn_data.txt file
-import pandas as pd
 import numpy as np
+import pandas as pd
 import astronomical_object
 import augment
 from scipy.special import erf
@@ -16,7 +16,7 @@ class SPCC_SN_data:
     def __init__(self):
         
         # load spcc sn data
-        spcc_sn_data = pd.read_csv('../../spcc_sn_data.txt',delimiter=' ', names=['spcc_names', 'spcc_types', 'spcc_mags', 'spcc_photo_z', 'spcc_photo_z_err', 'spcc_spec_z'])
+        spcc_sn_data = pd.read_csv('../spcc_sn_data.txt',delimiter=' ', names=['spcc_names', 'spcc_types', 'spcc_mags', 'spcc_photo_z', 'spcc_photo_z_err', 'spcc_spec_z'])
         self.spcc_names = spcc_sn_data['spcc_names'].values
         self.spcc_types = spcc_sn_data['spcc_types'].values
         self.spcc_mags = spcc_sn_data['spcc_mags'].values
@@ -143,7 +143,9 @@ class SPCC_SN_data:
         flt = []
         flux = []
         flux_err = []
-        with open('../../SIMGEN_PUBLIC_DES/'+sn, 'r') as f:
+        # it should be specified here where the SPCC data is stored
+        #with open('../../SIMGEN_PUBLIC_DES/'+sn, 'r') as f:
+        with open('/dir/to/data/SIMGEN_PUBLIC_DES/'+sn, 'r') as f:
             obj_name = str(sn)
             for line in f:
                 line_list = line.split()
@@ -644,16 +646,12 @@ class SpccAugmentor(augment.Augmentor):
         random_str = ''.join(np.random.choice(list(string.ascii_letters), 10))
         new_object_id = '%s_aug_%s.DAT' % (ref_object_id.split('.')[0], random_str)
         
-        
-
         while True:
             # Augment the metadata. The details of how this should work is
             # survey specific, so this must be implemented in subclasses.
             augmented_metadata = self._augment_metadata(reference_object)
             augmented_metadata['object_id'] = new_object_id
             augmented_metadata['reference_object_id'] = ref_object_id
-            
-            
             
             # Generate an augmented light curve for this augmented metadata.
             observations = self._resample_light_curve(reference_object, augmented_metadata)
@@ -668,14 +666,3 @@ class SpccAugmentor(augment.Augmentor):
                 return None
             else:
                 logger.warn("Failed to generate a light curve for redshift %.2f. Retrying." % augmented_metadata['redshift'])
-                #print("Failed to generate a light curve for redshift %.2f. Retrying." % augmented_metadata['redshift'])
-    
-    
-        
-    
-    
-     
-        
-                
-                
-        
