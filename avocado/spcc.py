@@ -16,7 +16,7 @@ class SPCC_SN_data:
     def __init__(self):
         
         # load spcc sn data
-        spcc_sn_data = pd.read_csv('../spcc_sn_data.txt',delimiter=' ', names=['spcc_names', 'spcc_types', 'spcc_mags', 'spcc_photo_z', 'spcc_photo_z_err', 'spcc_spec_z'])
+        spcc_sn_data = pd.read_csv('../data/spcc_sn_data.txt',delimiter=' ', names=['spcc_names', 'spcc_types', 'spcc_mags', 'spcc_photo_z', 'spcc_photo_z_err', 'spcc_spec_z'])
         self.spcc_names = spcc_sn_data['spcc_names'].values
         self.spcc_types = spcc_sn_data['spcc_types'].values
         self.spcc_mags = spcc_sn_data['spcc_mags'].values
