@@ -4,7 +4,6 @@ import george
 from george import kernels
 from matplotlib import pyplot as plt
 import numpy as np
-import pandas as pd
 from scipy.optimize import minimize
 
 from .instruments import (
@@ -66,7 +65,7 @@ class AstronomicalObject:
     @property
     def bands(self):
         """Return a list of bands that this object has observations in
-        
+
         Returns
         -------
         bands : numpy.array
@@ -110,7 +109,7 @@ class AstronomicalObject:
         This function is intended to be used to transform the raw observations
         table into one that can actually be used for classification. For now,
         all that this step does is apply background subtraction.
-        
+
         Parameters
         ----------
         subtract_background : bool (optional)

@@ -105,14 +105,23 @@ class Dataset:
 
         key is the index to .objects to use.
         """
-        new_objs = self.objects[key]
         new_name = f"{self.name}_subset"
-        return Dataset.from_objects(new_name, new_objs)
+
+        if self.objects is not None:
+            new_objs = self.objects[key]
+            return Dataset.from_objects(new_name, new_objs)
+        else:
+            # Metadata only
+            new_meta = self.metadata[key]
+            return Dataset(new_name, new_meta)
 
     def __add__(self, dataset):
         new_objs = np.concatenate([self.objects, dataset.objects])
         new_name = f"{self.name}_cat_{dataset.name}"
         return Dataset.from_objects(new_name, new_objs)
+
+    def __len__(self):
+        return len(self.metadata)
 
     @property
     def path(self):
