@@ -66,7 +66,12 @@ class Dataset:
         self.classifier = None
 
         if observations is None:
-            self.objects = np.asarray(objects)
+            if objects is not None:
+                # Objects passed in directly
+                self.objects = np.asarray(objects)
+            else:
+                # Metadata only
+                self.objects = None
         else:
             # Load each astronomical object in the dataset.
             self.objects = np.zeros(len(self.metadata), dtype=object)
