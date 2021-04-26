@@ -18,11 +18,22 @@ band_central_wavelengths = {
     "ps1::r": 6214.6,
     "ps1::i": 7544.6,
     "ps1::z": 8679.5,
-    
+
     "desg": 4686.,
     "desr": 6166.,
     "desi": 7480.,
     "desz": 8932.,
+
+    "ztfg": 4813.9,
+    "ztfr": 6421.8,
+    "ztfi": 7883.0,
+
+    "uvot::u": 3475.5,
+    "uvot::b": 4359.0,
+    "uvot::v": 5430.1,
+    "uvot::uvm2": 2254.9,
+    "uvot::uvw1": 2614.1,
+    "uvot::uvw2": 2079.0,
 }
 
 # Colors for plotting
@@ -34,15 +45,19 @@ band_plot_colors = {
     "lsstz": "C3",
     "lssty": "goldenrod",
 
-    "ps1::g": "C4",
-    "ps1::r": "C0",
-    "ps1::i": "C2",
+    "ps1::g": "C0",
+    "ps1::r": "C2",
+    "ps1::i": "C1",
     "ps1::z": "C3",
-    
+
     "desg": "C4",
     "desr": "C0",
     "desi": "C2",
     "desz": "C3",
+
+    "ztfg": "C0",
+    "ztfr": "C2",
+    "ztfi": "C1",
 }
 
 # Markers for plotting
@@ -54,15 +69,19 @@ band_plot_markers = {
     "lsstz": ">",
     "lssty": "s",
 
-    "ps1::g": "v",
+    "ps1::g": "o",
     "ps1::r": "^",
-    "ps1::i": "<",
-    "ps1::z": ">",
-    
+    "ps1::i": "v",
+    "ps1::z": "p",
+
     "desg": "v",
     "desr": "^",
     "desi": "<",
     "desz": ">",
+
+    "ztfg": "o",
+    "ztfr": "^",
+    "ztfi": "v",
 }
 
 
