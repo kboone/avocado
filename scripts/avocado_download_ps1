@@ -27,6 +27,9 @@ if __name__ == "__main__":
         zipdata.extractall(rawdir)
 
     print("Downloading metadata...")
+    # Download from Ashley Villar's website. This data is also available in the
+    # published paper, but it is behind a paywall which makes it challenging to
+    # automatically download.
     metadata_url = 'http://ashleyvillar.com/data/vav2020_table1.tex'
     metadata_path = os.path.join(rawdir, 'vav2020_table1.tex')
     avocado.utils.download_file(metadata_url, metadata_path)
@@ -34,6 +37,12 @@ if __name__ == "__main__":
     print("Parsing metadata...")
     raw_metadata = np.genfromtxt(metadata_path, delimiter=' & ', skip_header=7,
                                  skip_footer=8, dtype=None, encoding='ascii')
+
+    # There is a problem with PS1-14kz where it is missing two columns. Patch that.
+    assert raw_metadata[5227]['f0'] == 'PS1-14kz'
+    raw_metadata[5227] = ('PS1-14kz', 'PSc590287', '-', '-', '150.7406', '1.2456',
+                          0.0261, 'SNIa', 0.15, '-', '-', '6', '-', 'Y', 'Y')
+
     metadata = Table(
         raw_metadata,
         names=[
