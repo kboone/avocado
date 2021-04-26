@@ -6,6 +6,7 @@ from tqdm import tqdm
 from sklearn.model_selection import StratifiedKFold
 
 from .astronomical_object import AstronomicalObject
+from .instruments import get_band_central_wavelength
 from .utils import (
     AvocadoException,
     write_dataframe,
@@ -433,6 +434,20 @@ class Dataset:
         metadata['object_id'] = object_id
 
         return self.object_class(metadata, observations)
+
+    def get_bands(self):
+        """Return a list of all of the bands in the dataset.
+
+        This can take a while for large datasets, and doesn't work for metadata only
+        datasets.
+        """
+        bands = set()
+        for obj in self.objects:
+            bands = bands.union(obj.observations['band'])
+
+        sorted_bands = np.array(sorted(bands, key=get_band_central_wavelength))
+
+        return sorted_bands
 
     def plot_light_curve(self, *args, **kwargs):
         """Plot the light curve for an object in the dataset.
